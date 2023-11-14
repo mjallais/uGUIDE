@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uGUIDE"
+version = "0.0.1"
+authors = [
+  { name="Maëliss Jallais", email="jallaism@cardiff.ac.uk" },
+]
+description = "Package for estimating tissue microstructure using simuation-based inference"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/mjallais/uGUIDE"
+"Bug Tracker" = "https://github.com/mjallais/uGUIDE/issues"
