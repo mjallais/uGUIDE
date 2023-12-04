@@ -35,7 +35,6 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
     train_dataset, val_dataset = split_data(theta_norm, x_norm)
     train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=4_096)
-
     # Initialize NF and the embedded neural network
     # Or load pretrained ones if load_state=True
     nf = get_nf(input_dim=config['size_theta'],
@@ -43,6 +42,7 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
                 folder_path=config['folder_path'],
                 nf_state_dict_file=config['nf_state_dict_file'],
                 load_state=load_state)
+    nf.to(config['device'])
     embedded_net = get_embedded_net(input_dim=config['size_x'],
                                     output_dim=config['nf_features'],
                                     folder_path=config['folder_path'],
@@ -50,9 +50,11 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
                                     layer_1_dim=config['hidden_layers'][0],
                                     layer_2_dim=config['hidden_layers'][1],
                                     load_state=load_state)
+    embedded_net.to(config['device'])
 
     base_dist = dist.Normal(
-        loc=torch.zeros(config['size_theta']), scale=torch.ones(config['size_theta'])
+        loc=torch.zeros(config['size_theta']).to(config['device']),
+        scale=torch.ones(config['size_theta']).to(config['device'])
     )
     transformed_dist = dist.ConditionalTransformedDistribution(base_dist, nf)
 
@@ -62,15 +64,16 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
     best_val_loss = np.inf
     val_losses = []
 
-
-    for _ in tqdm(range(config['epochs'])):
+    pbar = tqdm(range(config['epochs']))
+    for _ in pbar:
+        pbar.set_postfix_str(f'Best val loss = {best_val_loss}')
 
         modules.train()
         for theta_batch, x_batch in train_dataloader:
             optimizer.zero_grad()
-            embedding = embedded_net(x_batch.detach().type(torch.float32))
+            embedding = embedded_net(x_batch.detach().type(torch.float32).to(config['device']))
             lp_theta = transformed_dist.condition(embedding).log_prob(
-                theta_batch.detach().type(torch.float32)
+                theta_batch.detach().type(torch.float32).to(config['device'])
             )
             loss = -lp_theta.mean()
             loss.backward()
@@ -82,16 +85,15 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
         with torch.no_grad():
             loss_acc = []
             for theta_batch, x_batch in val_dataloader:
-                embedding = embedded_net(x_batch.detach().type(torch.float32))
+                embedding = embedded_net(x_batch.detach().type(torch.float32).to(config['device']))
                 lp_theta = transformed_dist.condition(embedding).log_prob(
-                    theta_batch.detach().type(torch.float32)
+                    theta_batch.detach().type(torch.float32).to(config['device'])
                 )
                 loss = -lp_theta.mean()
-                loss_acc.append(loss.detach().numpy())
+                loss_acc.append(loss.detach().cpu().numpy())
 
             new_val_loss = np.mean(loss_acc)
             if new_val_loss < best_val_loss:
-                print("New best val loss: ", new_val_loss)
                 best_val_loss = new_val_loss
                 torch.save(
                     embedded_net.state_dict(),

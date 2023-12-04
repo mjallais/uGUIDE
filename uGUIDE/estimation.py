@@ -1,10 +1,27 @@
+import numpy as np
 import torch
 import pyro.distributions as dist
-
+from scipy import optimize
+import traceback
 
 from uGUIDE.normalization import load_normalizer
 from uGUIDE.density_estimator import get_nf
 from uGUIDE.embedded_net import get_embedded_net
+from uGUIDE.plot_utils import plot_posterior_distribution
+
+
+
+def estimate_microstructure(x, config, plot=True):
+    samples = sample_posterior_distribution(x, config)
+    map, mask, degeneracy_mask, uncertainty, ambiguity = estimate_theta(samples, config, plot_folder='essai')
+    if plot == True:
+        plot_posterior_distribution(samples, config)
+        print(f'Estimated theta = {map}')
+        print(f'Degeneracies = {degeneracy_mask}')
+        print(f'Uncertainties = {uncertainty}')
+        print(f'Ambiguities = {ambiguity}')
+    return map, mask, degeneracy_mask, uncertainty, ambiguity
+
 
 def sample_posterior_distribution(x, config):
     # Only one observation at a time
@@ -50,29 +67,142 @@ def sample_posterior_distribution(x, config):
     theta_normalizer = load_normalizer(config['folder_path'] / config['theta_normalizer_file'])
     samples = theta_normalizer.inverse(samples_norm)
 
-    return samples
+    return samples.detach().numpy()
 
 
-def estimate_theta():
+def estimate_theta(samples, config, plot_folder):
     # Get MAP, degeneracy, uncertainty and ambiguity
 
-    return
+    # Check if samples have the save size as size_theta in config
+    if config['size_theta'] != samples.shape[1]:
+        raise ValueError('Theta size in config does not match the ' \
+                         'size of theta used for training')
+    
+    theta_mean = samples.mean(0)
 
-def estimate_max_a_posteriori():
+    map = theta_mean
+    mask = np.ones(config['size_theta'], dtype=bool)
+    degeneracy_mask = np.zeros(config['size_theta'], dtype=bool)
+    uncertainty = np.zeros(config['size_theta'])
+    ambiguity = np.zeros(config['size_theta'])
 
-    return
+    for i, param in enumerate(config['prior'].keys()):
+        if (theta_mean[i] < config['prior'][param][0]) or (theta_mean[i] > config['prior'][param][1]):
+            mask[i] = False
+        else:
+            # Only compute degeneracy for non-masked/valid voxel estimations
+            x_hist, hist = get_hist(samples[:,i])
+            param_gauss = fit_two_gaussians(x_hist, hist, param)
+            degeneracy_mask[i] = is_degenerate(param_gauss, config['prior'][param])
+            if degeneracy_mask[i] == False:
+                map[i] = estimate_max_a_posteriori(param_gauss, config['prior'][param])
+                ambiguity[i] = estimate_ambiguity(param_gauss, config['prior'][param])
+                uncertainty[i] = estimate_uncertainty(samples[:,i], config['prior'][param])
+
+    return map, mask, degeneracy_mask, uncertainty, ambiguity
+
+
+def is_degenerate(param_gauss, prior_bounds):
+    degenerate = False
+
+    x = np.linspace(prior_bounds[0], prior_bounds[1], 1000)
+    der = derivative_two_gaussians(x, param_gauss[0], param_gauss[1], param_gauss[2], param_gauss[3], param_gauss[4], param_gauss[5])
+
+    sign_d = sign_der(der)
+    idx_der = np.where(sign_d[:-1] != sign_d[1:])[0] + 1
+
+    # If idx_der contain two consecutive numbers, means it is a suprious spike.
+    # Do not take it into account
+    if len(idx_der) > 1:
+        der_to_keep = []
+        for i_d, d in enumerate(idx_der):
+            before = False
+            after = False
+            if i_d != 0: # if not first one
+                if d - 1 == idx_der[i_d-1]: # consecutive with the one before
+                    before = True
+            if i_d != len(idx_der) - 1: # not the last one  
+                if d + 1 == idx_der[i_d+1]: # consecutive with the one after
+                    after = True
+            if after == False and before == False:
+                der_to_keep.append(d)
+        idx_der = der_to_keep
+
+    if len(idx_der) > 1:
+        # If distance between the mean of the two gaussians < sum of std,
+        # then the two are too close to distinguish them. Not degenerate
+        dist_mean = np.abs(param_gauss[1] - param_gauss[4])
+        if dist_mean > param_gauss[2] + param_gauss[5]:
+            degenerate = True
+
+    return degenerate
+
+
+def estimate_max_a_posteriori(param_gauss, prior_bounds):
+    x = np.linspace(prior_bounds[0], prior_bounds[1], 1000)
+    y = two_gaussians(x, param_gauss[0], param_gauss[1], param_gauss[2], param_gauss[3], param_gauss[4], param_gauss[5])
+    map = x[y == y.max()]
+    return map
     
 
-def estimate_ambiguity():
-
-    return
-
-
-def estimate_uncertainty():
-
-    return
+def estimate_ambiguity(param_gauss, prior_bounds):
+    x = np.linspace(prior_bounds[0], prior_bounds[1], 1000)
+    y = two_gaussians(x, param_gauss[0], param_gauss[1], param_gauss[2], param_gauss[3], param_gauss[4], param_gauss[5])
+    ambiguity = (len(np.where(y > y.max()/2)[0]) / x.shape[0]) * 100
+    return ambiguity
 
 
-def is_degenerate():
+def estimate_uncertainty(samples, prior_bounds):
+    q3, q1 = np.percentile(samples, [75, 25])
+    iqr = q3 - q1
+    uncertainty = iqr / (prior_bounds[1] - prior_bounds[0])
+    uncertainty *= 100
+    return uncertainty
 
-    return
+
+def one_gaussian(x, f, mu, sigma):
+    return f * 1/(sigma*(np.sqrt(2*np.pi))) * np.exp(-1/2 * ((x - mu) / sigma)**2)
+
+
+def two_gaussians(x, f1, mu1, sigma1, f2, mu2, sigma2):
+    return one_gaussian(x, f1, mu1, sigma1) + one_gaussian(x, f2, mu2, sigma2)
+
+
+def derivative_one_gaussian(x, f, mu, sigma):
+    return - (x - mu)/sigma**2 * one_gaussian(x, f, mu, sigma)
+
+
+def derivative_two_gaussians(x, f1, mu1, sigma1, f2, mu2, sigma2):
+    return derivative_one_gaussian(x, f1, mu1, sigma1) + derivative_one_gaussian(x, f2, mu2, sigma2)
+
+
+def sign_der(derivative):
+    s = np.sign(derivative)
+    if s[0] == 0:
+        s[0] = s[s != 0][0]
+    for i in np.arange(1, s.shape[0]):
+        if s[i] == 0:
+            s[i] = s[i-1]
+    return s
+
+
+def get_hist(samples):
+    hist, bin_edges = np.histogram(samples, density=True, bins=100)
+    n = len(hist)
+    x_hist=np.zeros((n),dtype=float) 
+    for ii in range(n):
+        x_hist[ii]=(bin_edges[ii+1]+bin_edges[ii])/2
+    return x_hist, hist
+
+
+def fit_two_gaussians(x_hist, hist, param):
+    param_gauss = np.zeros(6)
+    min_hist = x_hist[0]
+    max_hist = x_hist[-1]
+    try:
+        param_gauss, _ = optimize.curve_fit(two_gaussians, x_hist, hist,
+                                        bounds=([0.0, min_hist, 0.0, 0.0, min_hist, 0.0], [10, max_hist, max_hist, 10, max_hist, max_hist]))
+    except Exception:
+        print(f'Parameter {param}: cannot solve curve_fit')
+        print(traceback.format_exc())
+    return param_gauss

@@ -14,7 +14,7 @@ def plot_posterior_distribution(samples, config,
         nrows=1,
         ncols=config['size_theta'],
         figsize=(5 * config['size_theta'], 5),
-        # sharey="row",
+        sharey="row"
     )
 
     for i, param in enumerate(config['prior'].keys()):
@@ -25,7 +25,8 @@ def plot_posterior_distribution(samples, config,
             ax=axs[i],
             clip=config['prior'][param]
         )
-        axs[i].set_xlabel(param)
+        axs[i].set_xlabel(param, fontsize=20)
+        axs[i].set_xlim(config['prior'][param][0], config['prior'][param][1])
 
     fig.tight_layout()
     plt.savefig(config['folder_path'] / fig_file)
