@@ -23,10 +23,12 @@ parser.add_argument('--theta_test', type=str,
                     help='Testing data.')
 args = parser.parse_args()
 
-folder_simu = Path.home().parents[1] / 'cubric' / 'data' / 'sapmj3' / 'SBI_dMRI' / 'generated_data' / 'uniform_distributions'
+if args.inference:
+    if args.x_train is None or args.theta_train is None:
+        raise ValueError('No training dataset given for the inference.')
 
-theta_test = pd.read_csv(folder_simu / args.theta_test, header=None).values
-x_test = pd.read_csv(folder_simu / args.x_test, header=None).values
+theta_test = pd.read_csv(args.theta_test, header=None).values
+x_test = pd.read_csv(args.x_test, header=None).values
 
 prior = {'f': [0.0, 1.0],
          'Da': [0.1, 3.0],
@@ -34,26 +36,21 @@ prior = {'f': [0.0, 1.0],
          'u0': [0.0, 1.0],
          'u1': [0.0, 1.0]}
 config = create_config_uGUIDE(microstructure_model_name='Standard_Model',
-                              size_theta=theta_test.shape[1],
                               size_x=x_test.shape[1],
                               prior=prior,
                               nf_features=6,
                               nb_samples=50_000,
-                              epochs=40,
+                              epochs=100,
                               device='cpu')
 
 if args.inference:
-    theta_train = pd.read_csv(folder_simu / args.theta_train, header=None).values
-    x_train = pd.read_csv(folder_simu / args.theta_train, header=None).values
-
-    # test: use only limited number of samples
-    x_train = x_train[:10_000,:]
-    theta_train = theta_train[:10_000,:]
+    theta_train = pd.read_csv(args.theta_train, header=None).values
+    x_train = pd.read_csv(args.x_train, header=None).values
 
     run_inference(theta_train, x_train, config=config,
-                plot_loss=True, load_state=False)
+                  plot_loss=False, load_state=False)
 
-nb_theta = 100
+nb_theta = 1000
 start_time = time.time()
 estimates = Parallel(n_jobs=10)(delayed(estimate_microstructure)(x_test[i,:], config, plot=False)
                                                                  for i in np.arange(nb_theta))

@@ -28,8 +28,6 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
 
     theta_norm = theta_normalizer(theta)
     x_norm = x_normalizer(x)
-    theta_norm = torch.from_numpy(theta_norm).to(config['device'])
-    x_norm = torch.from_numpy(x_norm).to(config['device'])
     
     # Split training/validation sets
     train_dataset, val_dataset = split_data(theta_norm, x_norm)

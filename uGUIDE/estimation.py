@@ -16,6 +16,7 @@ def estimate_microstructure(x, config, plot=True):
     map, mask, degeneracy_mask, uncertainty, ambiguity = estimate_theta(samples, config, plot_folder='essai')
     if plot == True:
         plot_posterior_distribution(samples, config)
+        print(f'Parameters: {list(config["prior"].keys())}')
         print(f'Estimated theta = {map}')
         print(f'Degeneracies = {degeneracy_mask}')
         print(f'Uncertainties = {uncertainty}')
@@ -37,13 +38,14 @@ def sample_posterior_distribution(x, config):
     # Normalize data
     x_normalizer = load_normalizer(config['folder_path'] / config['x_normalizer_file'])
     x_norm = x_normalizer(x)
-    x_norm = torch.from_numpy(x_norm).to(config['device'])
+    x_norm = torch.from_numpy(x_norm).type(torch.float32).to(config['device'])
 
     nf = get_nf(input_dim=config['size_theta'],
                 nf_features=config['nf_features'],
                 folder_path=config['folder_path'],
                 nf_state_dict_file=config['nf_state_dict_file'],
                 load_state=True)
+    nf.to(config['device'])
     embedded_net = get_embedded_net(input_dim=config['size_x'],
                                     output_dim=config['nf_features'],
                                     folder_path=config['folder_path'],
@@ -51,23 +53,24 @@ def sample_posterior_distribution(x, config):
                                     layer_1_dim=config['hidden_layers'][0],
                                     layer_2_dim=config['hidden_layers'][1],
                                     load_state=True)
+    embedded_net.to(config['device'])
 
     base_dist = dist.Normal(
-        loc=torch.zeros((config['nb_samples'],) + (config['size_theta'],)),
-        scale=torch.ones((config['nb_samples'],) + (config['size_theta'],))
+        loc=torch.zeros((config['nb_samples'],) + (config['size_theta'],)).to(config['device']),
+        scale=torch.ones((config['nb_samples'],) + (config['size_theta'],)).to(config['device'])
     )
     transformed_dist = dist.ConditionalTransformedDistribution(base_dist, nf)
 
-    embedding = embedded_net(x_norm.type(torch.float32))
+    embedding = embedded_net(x_norm.type(torch.float32).to(config['device']))
 
     samples_norm = transformed_dist.condition(
             embedding
         ).sample()
 
     theta_normalizer = load_normalizer(config['folder_path'] / config['theta_normalizer_file'])
-    samples = theta_normalizer.inverse(samples_norm)
+    samples = theta_normalizer.inverse(samples_norm.detach().cpu().numpy())
 
-    return samples.detach().numpy()
+    return samples
 
 
 def estimate_theta(samples, config, plot_folder):
@@ -93,11 +96,15 @@ def estimate_theta(samples, config, plot_folder):
             # Only compute degeneracy for non-masked/valid voxel estimations
             x_hist, hist = get_hist(samples[:,i])
             param_gauss = fit_two_gaussians(x_hist, hist, param)
-            degeneracy_mask[i] = is_degenerate(param_gauss, config['prior'][param])
-            if degeneracy_mask[i] == False:
-                map[i] = estimate_max_a_posteriori(param_gauss, config['prior'][param])
-                ambiguity[i] = estimate_ambiguity(param_gauss, config['prior'][param])
-                uncertainty[i] = estimate_uncertainty(samples[:,i], config['prior'][param])
+            # If the gaussian fitting did not work, set this voxel's parameter as invalid
+            if np.all(param_gauss == 0):
+                mask[i] = False
+            else:
+                degeneracy_mask[i] = is_degenerate(param_gauss, config['prior'][param])
+                if degeneracy_mask[i] == False:
+                    map[i] = estimate_max_a_posteriori(param_gauss, config['prior'][param])
+                    ambiguity[i] = estimate_ambiguity(param_gauss, config['prior'][param])
+                    uncertainty[i] = estimate_uncertainty(samples[:,i], config['prior'][param])
 
     return map, mask, degeneracy_mask, uncertainty, ambiguity
 
