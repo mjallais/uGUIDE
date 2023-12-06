@@ -68,6 +68,11 @@ def create_config_uGUIDE(microstructure_model_name, size_x, prior,
             config['device'] = 'cuda'
         else:
             config['device'] = 'cpu'
+    elif device == 'cuda':
+        if torch.cuda.is_available() == False:
+            print('GPU usage requested, but cuda could not be found. Device ' \
+                  'set to CPU instead')
+            config['device'] = 'cpu'
     elif device == 'cpu' or device == 'cuda':
         config['device'] = device
     else:
