@@ -50,12 +50,13 @@ theta_test, x_test = preprocess_data(theta_test, x_test, bvals)
 
 #%%
 # Without postprocessing
-_ = estimate_microstructure(x_test[0,:], config, plot=True)
+_ = estimate_microstructure(x_test[1,:], config, plot=True,
+                            theta_gt=theta_test[1,:])
 
 # %%
 # With postprocessing
 # Convert u0 and u1 to De_par and De_perp and plot results
-_ = estimate_microstructure(x_test[0,:], config, postprocessing=postprocess_SM,
+_ = estimate_microstructure(x_test[1,:], config, postprocessing=postprocess_SM,
                             plot=True)
 
 # %%

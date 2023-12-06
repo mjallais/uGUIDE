@@ -10,7 +10,7 @@ from uGUIDE.embedded_net import get_embedded_net
 from uGUIDE.plot_utils import plot_posterior_distribution
 
 
-def estimate_microstructure(x, config, postprocessing=None, plot=True):
+def estimate_microstructure(x, config, postprocessing=None, plot=True, theta_gt=None):
     samples = sample_posterior_distribution(x, config)
     if postprocessing is not None:
         samples = postprocessing(samples, config)
@@ -18,11 +18,15 @@ def estimate_microstructure(x, config, postprocessing=None, plot=True):
     map, mask, degeneracy_mask, uncertainty, ambiguity = estimate_theta(samples, config, plot_folder='essai')
     if plot == True:
         if postprocessing is None:
-            plot_posterior_distribution(samples, config, postprocessing=False)
+            plot_posterior_distribution(samples, config, postprocessing=False,
+                                        ground_truth=theta_gt)
             print(f'Parameters: {list(config["prior"].keys())}')
         else:
-            plot_posterior_distribution(samples, config, postprocessing=True)
+            plot_posterior_distribution(samples, config, postprocessing=True,
+                                        ground_truth=theta_gt)
             print(f'Parameters: {list(config["prior_postprocessing"].keys())}')
+        if theta_gt is not None:
+            print(f'Ground truth theta = {theta_gt}')
         print(f'Estimated theta = {map}')
         print(f'Degeneracies = {degeneracy_mask}')
         print(f'Uncertainties = {uncertainty}')
