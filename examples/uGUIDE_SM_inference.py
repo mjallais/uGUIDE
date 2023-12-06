@@ -25,8 +25,8 @@ config = create_config_uGUIDE(microstructure_model_name='Standard_Model',
                               prior=prior,
                               nf_features=6,
                               nb_samples=50_000,
-                              epochs=100,
-                              device='cuda')
+                              max_epochs=200,
+                              device='cpu')
 
 #%%
 run_inference(theta_train, x_train, config=config,

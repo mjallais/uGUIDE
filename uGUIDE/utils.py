@@ -13,7 +13,8 @@ def create_config_uGUIDE(microstructure_model_name, size_x, prior,
                          embedder_state_dict_file='torch_embedder_SM.pt',
                          nf_state_dict_file='torch_nf_SM.pt',
                          device=None, nf_features=32, learning_rate=1e-3,
-                         epochs=40, hidden_layers=[128,64],
+                         max_epochs=500, random_state=1234,
+                         n_epochs_no_change=10, hidden_layers=[128,64],
                          nb_samples=1_000):
 
     config = {}
@@ -47,8 +48,10 @@ def create_config_uGUIDE(microstructure_model_name, size_x, prior,
 
     config['nf_features'] = nf_features
     config['learning_rate'] = learning_rate
-    config['epochs'] = epochs
+    config['max_epochs'] = max_epochs
+    config['random_state'] = random_state
     config['hidden_layers'] = hidden_layers
+    config['n_epochs_no_change'] = n_epochs_no_change
 
     # Sampling configuration
     config['nb_samples'] = nb_samples

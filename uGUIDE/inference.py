@@ -61,11 +61,13 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
 
     best_val_loss = np.inf
     val_losses = []
+    epoch = 0
+    epochs_no_change = 0
 
-    pbar = tqdm(range(config['epochs']))
-    for _ in pbar:
-        pbar.set_postfix_str(f'Best val loss = {best_val_loss}')
-
+    pbar = tqdm(desc='Run inference', total = config['max_epochs'])
+    while epoch < config['max_epochs'] \
+        and epochs_no_change < config['n_epochs_no_change']:
+        
         modules.train()
         for theta_batch, x_batch in train_dataloader:
             optimizer.zero_grad()
@@ -93,6 +95,7 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
             new_val_loss = np.mean(loss_acc)
             if new_val_loss < best_val_loss:
                 best_val_loss = new_val_loss
+                epochs_no_change = 0
                 torch.save(
                     embedded_net.state_dict(),
                     config['folder_path'] / config['embedder_state_dict_file']
@@ -101,8 +104,15 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
                     nf.state_dict(), 
                     config['folder_path'] / config['nf_state_dict_file']
                 )
+            else:
+                epochs_no_change += 1
 
             val_losses.append(new_val_loss)
+        epoch += 1
+        pbar.set_postfix_str(f'Best val loss = {best_val_loss}')
+        pbar.update()
+    pbar.close()
+    print(f'Inference done. Convergence reached after {epoch} epochs.')
 
     if plot_loss:
         plt.plot(val_losses, label="- Forward KL")
