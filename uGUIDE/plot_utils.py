@@ -3,6 +3,7 @@ import seaborn as sns
 
 
 def plot_posterior_distribution(samples, config,
+                                postprocessing=True,
                                 fig_file='posterior_distribution.png'):
 
     # Check if samples have the save size as size_theta in config
@@ -17,16 +18,21 @@ def plot_posterior_distribution(samples, config,
         sharey="row"
     )
 
-    for i, param in enumerate(config['prior'].keys()):
+    if postprocessing == False:
+        prior = config['prior']
+    else:
+        prior = config['prior_postprocessing']
+
+    for i, param in enumerate(prior.keys()):
         sns.kdeplot(
             samples[:,i],
             alpha=0.5,
             fill=True,
             ax=axs[i],
-            clip=config['prior'][param]
+            clip=prior[param]
         )
         axs[i].set_xlabel(param, fontsize=20)
-        axs[i].set_xlim(config['prior'][param][0], config['prior'][param][1])
+        axs[i].set_xlim(prior[param][0], prior[param][1])
 
     fig.tight_layout()
     plt.savefig(config['folder_path'] / fig_file)

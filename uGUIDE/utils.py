@@ -3,38 +3,9 @@ import torch
 import random
 from pathlib import Path
 
-# Call file data_utils?
-
-# Check if testing signal corresponds to observed signals used for training?
-
-def preprocess_data(theta, x, bvals):
-
-    # Check data size
-    if x.shape[0] != theta.shape[0]:
-        raise ValueError('Number of samples in theta and x do not match.')
-    if x.shape[1] != bvals.shape[0]:
-        raise ValueError('x size does not match the number of b-values.')
-
-    # Remove nan and inf present in the input signals
-    for data in [x, theta]:
-        idx_nan = np.where(np.isnan(data))
-        x = np.delete(x, idx_nan[0], 0)
-        theta = np.delete(theta, idx_nan[0], 0)
-
-        idx_inf = np.where(np.isinf(data))
-        x = np.delete(x, idx_inf[0], 0)
-        theta = np.delete(theta, idx_inf[0], 0)
-
-    # Normalize signal wrt b0
-    x_norm=np.zeros_like(x)
-    x0 = x[:, bvals == 0].mean(1)
-    for i in np.arange(x.shape[0]):
-        x_norm[i,:] = x[i,:] / x0[i]
-
-    return theta, x_norm
-
 
 def create_config_uGUIDE(microstructure_model_name, size_x, prior,
+                         prior_postprocessing=None,
                          x_normalizer_file='x_normalizer.p',
                          theta_normalizer_file='theta_normalizer.p',
                          embedder_state_dict_file='torch_embedder_SM.pt',
@@ -59,6 +30,10 @@ def create_config_uGUIDE(microstructure_model_name, size_x, prior,
     config['size_theta'] = len(prior)
     config['size_x'] = size_x
     config['prior'] = prior
+    if prior_postprocessing is None:
+        config['prior_postprocessing'] = prior
+    else:
+        config['prior_postprocessing'] = prior_postprocessing
 
     # Inference configuration
     # If user hasn't chosen between cpu and gpu, check if a gpu (cuda) is available.

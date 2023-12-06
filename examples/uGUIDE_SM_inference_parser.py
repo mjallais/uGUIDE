@@ -5,7 +5,8 @@ from joblib import Parallel, delayed
 import time
 import matplotlib.pyplot as plt
 
-from uGUIDE.utils import preprocess_data, create_config_uGUIDE
+from uGUIDE.utils import create_config_uGUIDE
+from uGUIDE.data_utils import preprocess_data, postprocess_SM
 from uGUIDE.inference import run_inference
 from uGUIDE.estimation import estimate_microstructure
 
@@ -41,6 +42,7 @@ prior = {'f': [0.0, 1.0],
 config = create_config_uGUIDE(microstructure_model_name='Standard_Model',
                               size_x=x_test.shape[1],
                               prior=prior,
+                              prior_postprocessing=None,
                               nf_features=6,
                               nb_samples=50_000,
                               max_epochs=200,
@@ -58,7 +60,9 @@ if args.inference:
 print('Estimation of the microstructure parameters from the test signals')
 nb_theta = theta_test.shape[0]
 start_time = time.time()
-estimates = Parallel(n_jobs=10)(delayed(estimate_microstructure)(x_test[i,:], config, plot=False)
+# No postprocessing, because we do a comparison with ground truth values that contain u0 and u1
+estimates = Parallel(n_jobs=10)(delayed(estimate_microstructure)(x_test[i,:], config,
+                                                                 plot=False)
                                                                  for i in np.arange(nb_theta))
 stop_time = time.time()
 print('Time to estimate parameters in all voxels:', stop_time - start_time)
