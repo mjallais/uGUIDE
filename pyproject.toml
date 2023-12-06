@@ -20,3 +20,6 @@ classifiers = [
 [project.urls]
 "Homepage" = "https://github.com/mjallais/uGUIDE"
 "Bug Tracker" = "https://github.com/mjallais/uGUIDE/issues"
+
+[tool.setuptools]
+packages = ['uGUIDE']
