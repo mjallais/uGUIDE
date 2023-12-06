@@ -32,7 +32,6 @@ def estimate_microstructure(x, config, postprocessing=None, plot=True):
 
 def sample_posterior_distribution(x, config):
     # Only one observation at a time
-    # Is it useful to do it on the gpu here?
 
     if x.ndim == 1:
         x = x.reshape(1,-1)
@@ -69,6 +68,7 @@ def sample_posterior_distribution(x, config):
 
     embedding = embedded_net(x_norm.type(torch.float32).to(config['device']))
 
+    # To do: rejection sampling
     samples_norm = transformed_dist.condition(
             embedding
         ).sample()
@@ -92,11 +92,11 @@ def estimate_theta(samples, config, plot_folder):
     map = theta_mean
     mask = np.ones(config['size_theta'], dtype=bool)
     degeneracy_mask = np.zeros(config['size_theta'], dtype=bool)
-    uncertainty = np.zeros(config['size_theta'])
-    ambiguity = np.zeros(config['size_theta'])
+    uncertainty = np.ones(config['size_theta']) * 100
+    ambiguity = np.ones(config['size_theta']) * 100
 
-    for i, param in enumerate(config['prior'].keys()):
-        if (theta_mean[i] < config['prior'][param][0]) or (theta_mean[i] > config['prior'][param][1]):
+    for i, param in enumerate(config['prior_postprocessing'].keys()):
+        if (theta_mean[i] < config['prior_postprocessing'][param][0]) or (theta_mean[i] > config['prior_postprocessing'][param][1]):
             mask[i] = False
         else:
             # Only compute degeneracy for non-masked/valid voxel estimations
@@ -106,11 +106,11 @@ def estimate_theta(samples, config, plot_folder):
             if np.all(param_gauss == 0):
                 mask[i] = False
             else:
-                degeneracy_mask[i] = is_degenerate(param_gauss, config['prior'][param])
-                if degeneracy_mask[i] == False:
-                    map[i] = estimate_max_a_posteriori(param_gauss, config['prior'][param])
-                    ambiguity[i] = estimate_ambiguity(param_gauss, config['prior'][param])
-                    uncertainty[i] = estimate_uncertainty(samples[:,i], config['prior'][param])
+                degeneracy_mask[i] = is_degenerate(param_gauss, config['prior_postprocessing'][param])
+                map[i] = estimate_max_a_posteriori(param_gauss, config['prior_postprocessing'][param])
+                if degeneracy_mask[i] == False: # If degenerate, uncertainty and ambiguity are set to 100%
+                    ambiguity[i] = estimate_ambiguity(param_gauss, config['prior_postprocessing'][param])
+                    uncertainty[i] = estimate_uncertainty(samples[:,i], config['prior_postprocessing'][param])
 
     return map, mask, degeneracy_mask, uncertainty, ambiguity
 
