@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import random
 from pathlib import Path
@@ -6,7 +7,32 @@ from pathlib import Path
 
 # Check if testing signal corresponds to observed signals used for training?
 
-# Normalize signal wrt b_0 and remove nan and inf
+def preprocess_data(theta, x, bvals):
+
+    # Check data size
+    if x.shape[0] != theta.shape[0]:
+        raise ValueError('Number of samples in theta and x do not match.')
+    if x.shape[1] != bvals.shape[0]:
+        raise ValueError('x size does not match the number of b-values.')
+
+    # Remove nan and inf present in the input signals
+    for data in [x, theta]:
+        idx_nan = np.where(np.isnan(data))
+        x = np.delete(x, idx_nan[0], 0)
+        theta = np.delete(theta, idx_nan[0], 0)
+
+        idx_inf = np.where(np.isinf(data))
+        x = np.delete(x, idx_inf[0], 0)
+        theta = np.delete(theta, idx_inf[0], 0)
+
+    # Normalize signal wrt b0
+    x_norm=np.zeros_like(x)
+    x0 = x[:, bvals == 0].mean(1)
+    for i in np.arange(x.shape[0]):
+        x_norm[i,:] = x[i,:] / x0[i]
+
+    return theta, x_norm
+
 
 def create_config_uGUIDE(microstructure_model_name, size_x, prior,
                          x_normalizer_file='x_normalizer.p',

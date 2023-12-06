@@ -3,16 +3,20 @@
 %autoreload 2
 
 #%%
+import numpy as np
 import pandas as pd
 from pathlib import Path
 
 from uGUIDE.inference import run_inference
-from uGUIDE.utils import create_config_uGUIDE
+from uGUIDE.utils import preprocess_data, create_config_uGUIDE
 from uGUIDE.estimation import estimate_microstructure
 
 #%%
 theta_train = pd.read_csv('simulations_SM_train_10000__f_Da_ODI_u0_u1.csv', header=None).values
 x_train = pd.read_csv(f'simulations_SM_train_10000__S_snr_50.csv', header=None).values
+
+bvals = np.loadtxt('bvals.bval')
+theta_train, x_train = preprocess_data(theta_train, x_train, bvals)
 
 #%%
 prior = {'f': [0.0, 1.0],
@@ -35,6 +39,7 @@ run_inference(theta_train, x_train, config=config,
 #%%
 theta_test = pd.read_csv('simulations_SM_test_1000__f_Da_ODI_u0_u1.csv', header=None).values
 x_test = pd.read_csv(f'simulations_SM_test_1000__S_snr_50.csv', header=None).values
+theta_test, x_test = preprocess_data(theta_test, x_test, bvals)
 
 #%%
 _ = estimate_microstructure(x_test[0,:], config, plot=True)

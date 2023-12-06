@@ -1,12 +1,11 @@
 import argparse
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from joblib import Parallel, delayed
 import time
 import matplotlib.pyplot as plt
 
-from uGUIDE.utils import create_config_uGUIDE
+from uGUIDE.utils import preprocess_data, create_config_uGUIDE
 from uGUIDE.inference import run_inference
 from uGUIDE.estimation import estimate_microstructure
 
@@ -21,6 +20,8 @@ parser.add_argument('--x_test', type=str,
                     help='Testing data.')
 parser.add_argument('--theta_test', type=str,
                     help='Testing data.')
+parser.add_argument('--bvals', type=str,
+                    help='File name containing the b-values.')
 args = parser.parse_args()
 
 if args.inference:
@@ -29,6 +30,8 @@ if args.inference:
 
 theta_test = pd.read_csv(args.theta_test, header=None).values
 x_test = pd.read_csv(args.x_test, header=None).values
+bvals = np.loadtxt(args.bvals)
+theta_test, x_test = preprocess_data(theta_test, x_test, bvals)
 
 prior = {'f': [0.0, 1.0],
          'Da': [0.1, 3.0],
@@ -40,12 +43,14 @@ config = create_config_uGUIDE(microstructure_model_name='Standard_Model',
                               prior=prior,
                               nf_features=6,
                               nb_samples=50_000,
-                              epochs=100,
-                              device='cpu')
+                              max_epochs=200,
+                              random_seed=1234)
 
 if args.inference:
     theta_train = pd.read_csv(args.theta_train, header=None).values
     x_train = pd.read_csv(args.x_train, header=None).values
+
+    theta_train, x_train = preprocess_data(theta_train, x_train, bvals)
 
     run_inference(theta_train, x_train, config=config,
                   plot_loss=False, load_state=False)
