@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import pyro
 import pyro.distributions as dist
 import matplotlib.pyplot as plt
 
@@ -14,11 +15,13 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
     
     # check if size(x) is compatible with size within config file
     if config['size_theta'] != theta.shape[1]:
-        raise ValueError('Theta size set in config is different from the ' \
-                         'size of theta used for training')
+        raise ValueError('Theta size set in config dos not match theta size ' \
+                         'used for training')
     if config['size_x'] != x.shape[1]:
-        raise ValueError('x size set in config is different from the size ' \
-                         'of x used for training')
+        raise ValueError('x size set in config does not match x size used ' \
+                         'for training')
+
+    pyro.set_rng_seed(config['random_seed'])
 
     # Normalize the data
     theta_normalizer = get_normalizer(theta)

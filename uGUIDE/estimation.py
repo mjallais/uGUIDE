@@ -32,8 +32,8 @@ def sample_posterior_distribution(x, config):
         x = x.reshape(1,-1)
 
     if config['size_x'] != x.shape[1]:
-        raise ValueError('x size set in config is different from the size ' \
-                         'of x used for training')
+        raise ValueError('x size set in config does not match x size used ' \
+                         'for training')
 
     # Normalize data
     x_normalizer = load_normalizer(config['folder_path'] / config['x_normalizer_file'])
@@ -78,8 +78,8 @@ def estimate_theta(samples, config, plot_folder):
 
     # Check if samples have the save size as size_theta in config
     if config['size_theta'] != samples.shape[1]:
-        raise ValueError('Theta size in config does not match the ' \
-                         'size of theta used for training')
+        raise ValueError('Theta size set in config does not match theta ' \
+                         'size used for training')
     
     theta_mean = samples.mean(0)
 

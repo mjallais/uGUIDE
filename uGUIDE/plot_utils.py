@@ -7,8 +7,8 @@ def plot_posterior_distribution(samples, config,
 
     # Check if samples have the save size as size_theta in config
     if config['size_theta'] != samples.shape[1]:
-        raise ValueError('Theta size in config does not match the ' \
-                         'size of theta used for training')
+        raise ValueError('Theta size set in config does not match theta ' \
+                         'size used for training')
 
     fig, axs = plt.subplots(
         nrows=1,
@@ -38,7 +38,8 @@ def plot_marginal_posterior(samples, config, ground_truth=None,
     # Not working ; WIP
     
     if ground_truth is not None and ground_truth.shape != config['size_theta']:
-        raise ValueError('Ground truth size does not match theta size in config')
+        raise ValueError('Ground truth size does not match theta size set in '\
+                         'config')
 
     for i, param in enumerate(config['prior'].keys()):
         plt.hist(samples[:, i])
