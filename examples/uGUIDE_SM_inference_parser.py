@@ -55,12 +55,13 @@ if args.inference:
     run_inference(theta_train, x_train, config=config,
                   plot_loss=False, load_state=False)
 
-nb_theta = 1000
+print('Estimation of the microstructure parameters from the test signals')
+nb_theta = theta_test.shape[0]
 start_time = time.time()
 estimates = Parallel(n_jobs=10)(delayed(estimate_microstructure)(x_test[i,:], config, plot=False)
                                                                  for i in np.arange(nb_theta))
 stop_time = time.time()
-print('Time to estimate all parameters in all voxels:', stop_time - start_time)
+print('Time to estimate parameters in all voxels:', stop_time - start_time)
 
 map = np.zeros((nb_theta,config['size_theta']))
 mask = np.zeros((nb_theta,config['size_theta']), dtype=bool)
@@ -76,10 +77,14 @@ for i in np.arange(nb_theta):
     ambiguity[i,:] = estimates[i][4]
 
 plt.figure(figsize=(5*config['size_theta'],5))
+col = np.where(mask_degeneracy == True, 'r', 'b')
 for p, param in enumerate(config['prior'].keys()):
     plt.subplot(1,config['size_theta'],p+1)
-    plt.plot(theta_test[:nb_theta,p], theta_test[:nb_theta,p], c='k', alpha=0.5)
-    plt.scatter(theta_test[:nb_theta,p], map[:,p])
+    plt.plot(theta_test[:nb_theta,p], theta_test[:nb_theta,p],
+             c='k', alpha=0.5)
+    idx_valid = np.where(mask[:,p] == True)
+    plt.scatter(theta_test[idx_valid[0],p], map[idx_valid[0],p],
+                c=col[idx_valid[0],p])
     plt.xlabel(f'{param}')
     plt.xlim(config['prior'][param][0], config['prior'][param][1])
     plt.ylim(config['prior'][param][0], config['prior'][param][1])
