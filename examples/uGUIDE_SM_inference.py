@@ -26,12 +26,11 @@ config = create_config_uGUIDE(microstructure_model_name='Standard_Model',
                               nf_features=6,
                               nb_samples=50_000,
                               max_epochs=200,
-                              device='cpu')
+                              random_seed=1234)
 
 #%%
 run_inference(theta_train, x_train, config=config,
               plot_loss=True, load_state=False)
-
 
 #%%
 theta_test = pd.read_csv('simulations_SM_test_1000__f_Da_ODI_u0_u1.csv', header=None).values

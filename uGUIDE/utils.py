@@ -1,4 +1,5 @@
 import torch
+import random
 from pathlib import Path
 
 # Call file data_utils?
@@ -13,7 +14,7 @@ def create_config_uGUIDE(microstructure_model_name, size_x, prior,
                          embedder_state_dict_file='torch_embedder_SM.pt',
                          nf_state_dict_file='torch_nf_SM.pt',
                          device=None, nf_features=32, learning_rate=1e-3,
-                         max_epochs=500, random_state=1234,
+                         max_epochs=500, random_seed=None,
                          n_epochs_no_change=10, hidden_layers=[128,64],
                          nb_samples=1_000):
 
@@ -49,9 +50,11 @@ def create_config_uGUIDE(microstructure_model_name, size_x, prior,
     config['nf_features'] = nf_features
     config['learning_rate'] = learning_rate
     config['max_epochs'] = max_epochs
-    config['random_state'] = random_state
-    config['hidden_layers'] = hidden_layers
     config['n_epochs_no_change'] = n_epochs_no_change
+    config['hidden_layers'] = hidden_layers
+    if random_seed is None:
+        random_seed = random.randint(0, 10_000)
+    config['random_seed'] = random_seed
 
     # Sampling configuration
     config['nb_samples'] = nb_samples

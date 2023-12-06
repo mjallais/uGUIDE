@@ -15,7 +15,7 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
     
     # check if size(x) is compatible with size within config file
     if config['size_theta'] != theta.shape[1]:
-        raise ValueError('Theta size set in config dos not match theta size ' \
+        raise ValueError('Theta size set in config does not match theta size ' \
                          'used for training')
     if config['size_x'] != x.shape[1]:
         raise ValueError('x size set in config does not match x size used ' \
