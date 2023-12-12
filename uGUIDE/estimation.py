@@ -63,22 +63,33 @@ def sample_posterior_distribution(x, config):
                                     layer_2_dim=config['hidden_layers'][1],
                                     load_state=True)
     embedded_net.to(config['device'])
-
-    base_dist = dist.Normal(
-        loc=torch.zeros((config['nb_samples'],) + (config['size_theta'],)).to(config['device']),
-        scale=torch.ones((config['nb_samples'],) + (config['size_theta'],)).to(config['device'])
-    )
-    transformed_dist = dist.ConditionalTransformedDistribution(base_dist, nf)
-
     embedding = embedded_net(x_norm.type(torch.float32).to(config['device']))
 
-    # To do: rejection sampling
-    samples_norm = transformed_dist.condition(
-            embedding
-        ).sample()
+    # Rejection sampling
+    nb_to_sample = config['nb_samples']
+    prior_min = np.array([config['prior'][p][0] for p in config['prior'].keys()])
+    prior_max = np.array([config['prior'][p][1] for p in config['prior'].keys()])
+    samples = np.zeros((nb_to_sample, config['size_theta']))
+    while nb_to_sample > 0:
 
-    theta_normalizer = load_normalizer(config['folder_path'] / config['theta_normalizer_file'])
-    samples = theta_normalizer.inverse(samples_norm.detach().cpu().numpy())
+        base_dist = dist.Normal(
+            loc=torch.zeros((nb_to_sample,) + (config['size_theta'],)).to(config['device']),
+            scale=torch.ones((nb_to_sample,) + (config['size_theta'],)).to(config['device'])
+        )
+        transformed_dist = dist.ConditionalTransformedDistribution(base_dist, nf)
+
+        samples_norm = transformed_dist.condition(
+                embedding
+            ).sample()
+
+        theta_normalizer = load_normalizer(config['folder_path'] / config['theta_normalizer_file'])
+        candidates = theta_normalizer.inverse(samples_norm.detach().cpu().numpy())
+        accepted = (candidates > prior_min).all(1) & (candidates < prior_max).all(1)
+        if nb_to_sample == config['nb_samples']:
+            samples = candidates[accepted]
+        else:
+            samples = np.append(samples, candidates[accepted], axis=0)
+        nb_to_sample = config['nb_samples'] - len(samples)
 
     return samples
 
