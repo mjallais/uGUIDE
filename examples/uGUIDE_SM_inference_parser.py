@@ -6,7 +6,7 @@ import time
 import matplotlib.pyplot as plt
 
 from uGUIDE.utils import create_config_uGUIDE
-from uGUIDE.data_utils import preprocess_data, postprocess_SM
+from uGUIDE.data_utils import preprocess_data
 from uGUIDE.inference import run_inference
 from uGUIDE.estimation import estimate_microstructure
 
