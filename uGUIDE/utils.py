@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import random
 from pathlib import Path
+import pickle
 
 
 def create_config_uGUIDE(microstructure_model_name, size_x, prior,
@@ -68,6 +69,20 @@ def create_config_uGUIDE(microstructure_model_name, size_x, prior,
     return config
 
 
-def save_config_uGUIDE(config):
+def save_config_uGUIDE(config, savefile='config.pkl', folderpath=None):
 
+    if folderpath is None:
+        folderpath = config['folder_path']
+    with open(folderpath / savefile, 'wb') as f:
+        pickle.dump(config, f)
+        print(f'uGUIDE config successfully saved to {folderpath / savefile}')
+    
     return
+
+def load_config_uGUIDE(savefile):
+
+    with open(savefile, 'rb') as f:
+        config = pickle.load(f)
+        print('uGUIDE config successfully loaded.')
+    
+    return config

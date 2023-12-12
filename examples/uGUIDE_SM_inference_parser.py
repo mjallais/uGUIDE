@@ -4,8 +4,9 @@ import pandas as pd
 from joblib import Parallel, delayed
 import time
 import matplotlib.pyplot as plt
+from pathlib import Path
 
-from uGUIDE.utils import create_config_uGUIDE
+from uGUIDE.utils import create_config_uGUIDE, load_config_uGUIDE, save_config_uGUIDE
 from uGUIDE.data_utils import preprocess_data
 from uGUIDE.inference import run_inference
 from uGUIDE.estimation import estimate_microstructure
@@ -34,19 +35,23 @@ x_test = pd.read_csv(args.x_test, header=None).values
 bvals = np.loadtxt(args.bvals)
 theta_test, x_test = preprocess_data(theta_test, x_test, bvals)
 
-prior = {'f': [0.0, 1.0],
-         'Da': [0.1, 3.0],
-         'ODI': [0.03, 0.95],
-         'u0': [0.0, 1.0],
-         'u1': [0.0, 1.0]}
-config = create_config_uGUIDE(microstructure_model_name='Standard_Model',
-                              size_x=x_test.shape[1],
-                              prior=prior,
-                              prior_postprocessing=None,
-                              nf_features=6,
-                              nb_samples=50_000,
-                              max_epochs=200,
-                              random_seed=1234)
+if Path.exists(Path.cwd() / 'config.pkl'):
+    config = load_config_uGUIDE('config.pkl')
+else:
+    prior = {'f': [0.0, 1.0],
+            'Da': [0.1, 3.0],
+            'ODI': [0.03, 0.95],
+            'u0': [0.0, 1.0],
+            'u1': [0.0, 1.0]}
+    config = create_config_uGUIDE(microstructure_model_name='Standard_Model',
+                                size_x=x_test.shape[1],
+                                prior=prior,
+                                prior_postprocessing=None,
+                                nf_features=6,
+                                nb_samples=50_000,
+                                max_epochs=200,
+                                random_seed=1234)
+    save_config_uGUIDE(config, savefile='config.pkl')
 
 if args.inference:
     theta_train = pd.read_csv(args.theta_train, header=None).values

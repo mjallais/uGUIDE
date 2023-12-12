@@ -5,9 +5,8 @@
 #%%
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
-from uGUIDE.utils import create_config_uGUIDE
+from uGUIDE.utils import create_config_uGUIDE, save_config_uGUIDE
 from uGUIDE.data_utils import preprocess_data, postprocess_SM
 from uGUIDE.inference import run_inference
 from uGUIDE.estimation import estimate_microstructure
@@ -38,6 +37,7 @@ config = create_config_uGUIDE(microstructure_model_name='Standard_Model',
                               nb_samples=50_000,
                               max_epochs=200,
                               random_seed=1234)
+save_config_uGUIDE(config, savefile='config.pkl')
 
 #%%
 run_inference(theta_train, x_train, config=config,
