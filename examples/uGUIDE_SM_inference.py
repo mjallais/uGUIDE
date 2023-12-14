@@ -37,7 +37,7 @@ config = create_config_uGUIDE(microstructure_model_name='Standard_Model',
                               nb_samples=50_000,
                               max_epochs=200,
                               random_seed=1234)
-save_config_uGUIDE(config, savefile='config.pkl')
+save_config_uGUIDE(config, savefile='config_postprocessing.pkl')
 
 #%%
 run_inference(theta_train, x_train, config=config,

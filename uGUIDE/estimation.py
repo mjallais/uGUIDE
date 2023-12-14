@@ -3,6 +3,7 @@ import torch
 import pyro.distributions as dist
 from scipy import optimize
 import traceback
+import matplotlib.pyplot as plt
 
 from uGUIDE.normalization import load_normalizer
 from uGUIDE.density_estimator import get_nf
@@ -15,8 +16,18 @@ def estimate_microstructure(x, config, postprocessing=None, plot=True, theta_gt=
     if postprocessing is not None:
         samples = postprocessing(samples, config)
 
-    map, mask, degeneracy_mask, uncertainty, ambiguity = estimate_theta(samples, config, plot_folder='essai')
-    if plot == True:
+    map, mask, degeneracy_mask, uncertainty, ambiguity = estimate_theta(samples, config)
+
+    if mask.all() == False: # If at least one is False
+        param_fail = np.array(list(config["prior"].keys()))[mask == False]
+        print('Estimation of the voxel did not work. Unable to fit two ' \
+            'Gaussians on the posterior distribution of parameters ' \
+             f'{param_fail}.')
+        plot_posterior_distribution(samples, config,
+                                    postprocessing=False,
+                                    fig_file=f'posterior_distribution_masked_{param_fail}.png')
+
+    elif plot == True:
         if postprocessing is None:
             plot_posterior_distribution(samples, config, postprocessing=False,
                                         ground_truth=theta_gt)
@@ -25,12 +36,15 @@ def estimate_microstructure(x, config, postprocessing=None, plot=True, theta_gt=
             plot_posterior_distribution(samples, config, postprocessing=True,
                                         ground_truth=theta_gt)
             print(f'Parameters: {list(config["prior_postprocessing"].keys())}')
+        
         if theta_gt is not None:
             print(f'Ground truth theta = {theta_gt}')
+        
         print(f'Estimated theta = {map}')
         print(f'Degeneracies = {degeneracy_mask}')
         print(f'Uncertainties = {uncertainty}')
         print(f'Ambiguities = {ambiguity}')
+
     return map, mask, degeneracy_mask, uncertainty, ambiguity
 
 
@@ -94,14 +108,14 @@ def sample_posterior_distribution(x, config):
     return samples
 
 
-def estimate_theta(samples, config, plot_folder):
+def estimate_theta(samples, config):
     # Get MAP, degeneracy, uncertainty and ambiguity
 
     # Check if samples have the save size as size_theta in config
     if config['size_theta'] != samples.shape[1]:
         raise ValueError('Theta size set in config does not match theta ' \
                          'size used for training')
-    
+
     theta_mean = samples.mean(0)
 
     map = theta_mean
@@ -111,7 +125,8 @@ def estimate_theta(samples, config, plot_folder):
     ambiguity = np.ones(config['size_theta']) * 100
 
     for i, param in enumerate(config['prior_postprocessing'].keys()):
-        if (theta_mean[i] < config['prior_postprocessing'][param][0]) or (theta_mean[i] > config['prior_postprocessing'][param][1]):
+        if (theta_mean[i] < config['prior_postprocessing'][param][0]) \
+            or (theta_mean[i] > config['prior_postprocessing'][param][1]):
             mask[i] = False
         else:
             # Only compute degeneracy for non-masked/valid voxel estimations
