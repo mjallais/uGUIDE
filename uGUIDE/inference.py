@@ -25,9 +25,9 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
 
     # Normalize the data
     theta_normalizer = get_normalizer(theta)
-    save_normalizer(theta_normalizer, config['folder_path'] / config['theta_normalizer_file'])
+    save_normalizer(theta_normalizer, config['folderpath'] / config['theta_normalizer_file'])
     x_normalizer = get_normalizer(x)
-    save_normalizer(x_normalizer, config['folder_path'] / config['x_normalizer_file'])
+    save_normalizer(x_normalizer, config['folderpath'] / config['x_normalizer_file'])
 
     theta_norm = theta_normalizer(theta)
     x_norm = x_normalizer(x)
@@ -40,13 +40,13 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
     # Or load pretrained ones if load_state=True
     nf = get_nf(input_dim=config['size_theta'],
                 nf_features=config['nf_features'],
-                folder_path=config['folder_path'],
+                folder_path=config['folderpath'],
                 nf_state_dict_file=config['nf_state_dict_file'],
                 load_state=load_state)
     nf.to(config['device'])
     embedded_net = get_embedded_net(input_dim=config['size_x'],
                                     output_dim=config['nf_features'],
-                                    folder_path=config['folder_path'],
+                                    folder_path=config['folderpath'],
                                     embedder_state_dict_file=config['embedder_state_dict_file'],
                                     layer_1_dim=config['hidden_layers'][0],
                                     layer_2_dim=config['hidden_layers'][1],
@@ -101,11 +101,11 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
                 epochs_no_change = 0
                 torch.save(
                     embedded_net.state_dict(),
-                    config['folder_path'] / config['embedder_state_dict_file']
+                    config['folderpath'] / config['embedder_state_dict_file']
                 )
                 torch.save(
                     nf.state_dict(), 
-                    config['folder_path'] / config['nf_state_dict_file']
+                    config['folderpath'] / config['nf_state_dict_file']
                 )
             else:
                 epochs_no_change += 1
