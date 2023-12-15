@@ -11,21 +11,23 @@ from uGUIDE.embedded_net import get_embedded_net
 from uGUIDE.plot_utils import plot_posterior_distribution
 
 
-def estimate_microstructure(x, config, postprocessing=None, plot=True, theta_gt=None):
+def estimate_microstructure(x, config, postprocessing=None, voxel_id=0, plot=True, theta_gt=None):
     samples = sample_posterior_distribution(x, config)
     if postprocessing is not None:
         samples = postprocessing(samples, config)
 
-    map, mask, degeneracy_mask, uncertainty, ambiguity = estimate_theta(samples, config)
+    map, mask, degeneracy_mask, uncertainty, ambiguity = estimate_theta(samples,
+                                                                        config,
+                                                                        postprocessing=postprocessing is not None)
 
     if mask.all() == False: # If at least one is False
-        param_fail = np.array(list(config["prior"].keys()))[mask == False]
-        print('Estimation of the voxel did not work. Unable to fit two ' \
-            'Gaussians on the posterior distribution of parameters ' \
-             f'{param_fail}.')
+        param_fail = np.array(list(config["prior_postprocessing"].keys()))[mask == False]
+        print(f'Microstructure estimation of voxel {voxel_id} did not work. '\
+              'Unable to fit two Gaussians on the posterior distribution of '
+              f'{", ".join(param_fail)}.')
         plot_posterior_distribution(samples, config,
-                                    postprocessing=False,
-                                    fig_file=f'posterior_distribution_masked_{param_fail}.png')
+                                    postprocessing=postprocessing is not None,
+                                    fig_file=f'posterior_distribution_masked_voxel_{voxel_id}_fail_{"_".join(param_fail)}.png')
 
     elif plot == True:
         if postprocessing is None:
@@ -42,8 +44,8 @@ def estimate_microstructure(x, config, postprocessing=None, plot=True, theta_gt=
         
         print(f'Estimated theta = {map}')
         print(f'Degeneracies = {degeneracy_mask}')
-        print(f'Uncertainties = {uncertainty}')
-        print(f'Ambiguities = {ambiguity}')
+        print(f'Uncertainties = {uncertainty} %')
+        print(f'Ambiguities = {ambiguity} %')
 
     return map, mask, degeneracy_mask, uncertainty, ambiguity
 
@@ -108,39 +110,46 @@ def sample_posterior_distribution(x, config):
     return samples
 
 
-def estimate_theta(samples, config):
+def estimate_theta(samples, config, postprocessing=False):
     # Get MAP, degeneracy, uncertainty and ambiguity
 
     # Check if samples have the save size as size_theta in config
-    if config['size_theta'] != samples.shape[1]:
-        raise ValueError('Theta size set in config does not match theta ' \
-                         'size used for training')
+    if (postprocessing == False) & (config['size_theta'] != samples.shape[1]):
+            raise ValueError('Theta size set in config does not match theta ' \
+                            'size used for training')
+    elif (postprocessing == True) & (len(config['prior_postprocessing']) != samples.shape[1]):
+            raise ValueError('Theta size does not match theta size of postprocessing.')
+
+    if postprocessing == True:
+        prior = config['prior_postprocessing']
+    else:
+        prior = config['prior']
 
     theta_mean = samples.mean(0)
 
     map = theta_mean
-    mask = np.ones(config['size_theta'], dtype=bool)
-    degeneracy_mask = np.zeros(config['size_theta'], dtype=bool)
-    uncertainty = np.ones(config['size_theta']) * 100
-    ambiguity = np.ones(config['size_theta']) * 100
+    mask = np.ones(len(prior), dtype=bool)
+    degeneracy_mask = np.zeros(len(prior), dtype=bool)
+    uncertainty = np.ones(len(prior)) * 100
+    ambiguity = np.ones(len(prior)) * 100
 
-    for i, param in enumerate(config['prior_postprocessing'].keys()):
-        if (theta_mean[i] < config['prior_postprocessing'][param][0]) \
-            or (theta_mean[i] > config['prior_postprocessing'][param][1]):
+    for i, param in enumerate(prior.keys()):
+        if (theta_mean[i] < prior[param][0]) \
+            or (theta_mean[i] > prior[param][1]):
             mask[i] = False
         else:
             # Only compute degeneracy for non-masked/valid voxel estimations
             x_hist, hist = get_hist(samples[:,i])
-            param_gauss = fit_two_gaussians(x_hist, hist, param)
+            param_gauss = fit_two_gaussians(x_hist, hist)
             # If the gaussian fitting did not work, set this voxel's parameter as invalid
             if np.all(param_gauss == 0):
                 mask[i] = False
             else:
-                degeneracy_mask[i] = is_degenerate(param_gauss, config['prior_postprocessing'][param])
-                map[i] = estimate_max_a_posteriori(param_gauss, config['prior_postprocessing'][param])
+                degeneracy_mask[i] = is_degenerate(param_gauss, prior[param])
+                map[i] = estimate_max_a_posteriori(param_gauss, prior[param])
                 if degeneracy_mask[i] == False: # If degenerate, uncertainty and ambiguity are set to 100%
-                    ambiguity[i] = estimate_ambiguity(param_gauss, config['prior_postprocessing'][param])
-                    uncertainty[i] = estimate_uncertainty(samples[:,i], config['prior_postprocessing'][param])
+                    ambiguity[i] = estimate_ambiguity(param_gauss, prior[param])
+                    uncertainty[i] = estimate_uncertainty(samples[:,i], prior[param])
 
     return map, mask, degeneracy_mask, uncertainty, ambiguity
 
@@ -238,14 +247,13 @@ def get_hist(samples):
     return x_hist, hist
 
 
-def fit_two_gaussians(x_hist, hist, param):
-    param_gauss = np.zeros(6)
+def fit_two_gaussians(x_hist, hist):
     min_hist = x_hist[0]
     max_hist = x_hist[-1]
     try:
         param_gauss, _ = optimize.curve_fit(two_gaussians, x_hist, hist,
-                                        bounds=([0.0, min_hist, 0.0, 0.0, min_hist, 0.0], [10, max_hist, max_hist, 10, max_hist, max_hist]))
+                                            bounds=([0.0, min_hist, 0.0, 0.0, min_hist, 0.0], [10, max_hist, max_hist, 10, max_hist, max_hist]))
     except Exception:
-        print(f'Parameter {param}: cannot solve curve_fit')
-        print(traceback.format_exc())
+        param_gauss = np.zeros(6)
+        # print(traceback.format_exc())
     return param_gauss

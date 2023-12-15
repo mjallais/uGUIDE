@@ -9,12 +9,15 @@ def plot_posterior_distribution(samples, config,
 
     # Check if samples have the save size as size_theta in config
     if config['size_theta'] != samples.shape[1]:
-        raise ValueError('Theta size set in config does not match theta ' \
-                         'size used for training')
+        # Maybe preprocessing step was applied that updated the size of the samples
+        if (postprocessing == True) & (len(config['prior_postprocessing']) != samples.shape[1]):
+            raise ValueError('Theta size set in config does not match theta ' \
+                            'size used for training')
     
-    if ground_truth is not None and ground_truth.shape[0] != config['size_theta']:
-        raise ValueError('Ground truth size does not match theta size set in '\
-                         'config')
+    if (ground_truth is not None) and (ground_truth.shape[0] != config['size_theta']):
+        if (postprocessing == True) & (len(config['prior_postprocessing']) != samples.shape[1]):
+            raise ValueError('Ground truth size does not match theta size set in '\
+                            'config')
 
     if postprocessing == False:
         prior = config['prior']
@@ -23,8 +26,8 @@ def plot_posterior_distribution(samples, config,
     
     fig, axs = plt.subplots(
         nrows=1,
-        ncols=config['size_theta'],
-        figsize=(5 * config['size_theta'], 5),
+        ncols=len(prior),
+        figsize=(5 * len(prior), 5),
         sharey="row"
     )
     for i, param in enumerate(prior.keys()):
