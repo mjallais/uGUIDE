@@ -39,6 +39,6 @@ def plot_posterior_distribution(samples, config,
         axs[i].set_xlim(prior[param][0], prior[param][1])
 
     fig.tight_layout()
-    plt.savefig(config['folder_path'] / fig_file)
+    plt.savefig(config['folderpath'] / fig_file)
     
     return

@@ -59,19 +59,19 @@ def sample_posterior_distribution(x, config):
                          'for training')
 
     # Normalize data
-    x_normalizer = load_normalizer(config['folder_path'] / config['x_normalizer_file'])
+    x_normalizer = load_normalizer(config['folderpath'] / config['x_normalizer_file'])
     x_norm = x_normalizer(x)
     x_norm = torch.from_numpy(x_norm).type(torch.float32).to(config['device'])
 
     nf = get_nf(input_dim=config['size_theta'],
                 nf_features=config['nf_features'],
-                folder_path=config['folder_path'],
+                folder_path=config['folderpath'],
                 nf_state_dict_file=config['nf_state_dict_file'],
                 load_state=True)
     nf.to(config['device'])
     embedded_net = get_embedded_net(input_dim=config['size_x'],
                                     output_dim=config['nf_features'],
-                                    folder_path=config['folder_path'],
+                                    folder_path=config['folderpath'],
                                     embedder_state_dict_file=config['embedder_state_dict_file'],
                                     layer_1_dim=config['hidden_layers'][0],
                                     layer_2_dim=config['hidden_layers'][1],
@@ -96,7 +96,7 @@ def sample_posterior_distribution(x, config):
                 embedding
             ).sample()
 
-        theta_normalizer = load_normalizer(config['folder_path'] / config['theta_normalizer_file'])
+        theta_normalizer = load_normalizer(config['folderpath'] / config['theta_normalizer_file'])
         candidates = theta_normalizer.inverse(samples_norm.detach().cpu().numpy())
         accepted = (candidates > prior_min).all(1) & (candidates < prior_max).all(1)
         if nb_to_sample == config['nb_samples']:
