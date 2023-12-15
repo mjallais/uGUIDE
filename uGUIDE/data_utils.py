@@ -40,8 +40,30 @@ def postprocess_SM(samples, config):
     De_par_max = config['prior_postprocessing']['De_par'][1]
     De_perp_min = config['prior_postprocessing']['De_perp'][0]
     De_par = np.sqrt((De_par_max - De_par_min)**2 * u0) + De_par_min
-    De_perp = (De_par - De_par_min)**2 * u1 + De_perp_min
+    De_perp = (De_par - De_par_min) * u1 + De_perp_min
     samples[:,idx_u0] = De_par
     samples[:,idx_u1] = De_perp
 
     return samples
+
+
+def postprocess_SANDI(samples, config):
+
+    idx_k1 = np.where(np.array(list(config['prior'].keys())) == 'k1')[0]
+    idx_k2 = np.where(np.array(list(config['prior'].keys())) == 'k2')[0]
+    k1 = samples[:,idx_k1]
+    k2 = samples[:,idx_k2]
+    # Set negative values to 0, otherwise get nan values
+    k1 = np.where(k1 < 0, 0, k1)
+    k2 = np.where(k2 < 0, 0, k2)
+    fn = k2 * np.sqrt(k1)
+    fs = (1 - k2) * np.sqrt(k1)
+    fe = 1 - np.sqrt(k1)
+
+    samples_f = np.zeros((samples.shape[0], samples.shape[1]+1))
+    samples_f[:,0] = fn[:,0]
+    samples_f[:,1] = fs[:,0]
+    samples_f[:,2] = fe[:,0]
+    samples_f[:,3:] = samples[:,2:]
+
+    return samples_f
