@@ -19,6 +19,7 @@ def create_config_uGUIDE(microstructure_model_name, size_x, prior,
 
     config = {}
 
+    config['microstructure_model_name'] = microstructure_model_name
     # Save locations and names
     if folderpath is None:
         folderpath = Path.cwd().parent / 'results' / f'uGUIDE_{microstructure_model_name}'
