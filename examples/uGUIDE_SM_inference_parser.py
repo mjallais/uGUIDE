@@ -97,4 +97,4 @@ for p, param in enumerate(config['prior'].keys()):
     plt.xlabel(f'{param}')
     plt.xlim(config['prior'][param][0], config['prior'][param][1])
     plt.ylim(config['prior'][param][0], config['prior'][param][1])
-plt.savefig(config['folder_path'] / 'plot_ground_truth_map.png')
+plt.savefig(config['folderpath'] / 'plot_ground_truth_map.png')

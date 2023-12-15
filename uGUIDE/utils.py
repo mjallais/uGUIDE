@@ -7,6 +7,7 @@ import pickle
 
 def create_config_uGUIDE(microstructure_model_name, size_x, prior,
                          prior_postprocessing=None,
+                         folderpath=None,
                          x_normalizer_file='x_normalizer.p',
                          theta_normalizer_file='theta_normalizer.p',
                          embedder_state_dict_file='torch_embedder_SM.pt',
@@ -19,9 +20,10 @@ def create_config_uGUIDE(microstructure_model_name, size_x, prior,
     config = {}
 
     # Save locations and names
-    folder_path = Path.cwd().parent / 'results' / f'uGUIDE_{microstructure_model_name}'
-    folder_path.mkdir(exist_ok=True, parents=True)
-    config['folder_path'] = folder_path
+    if folderpath is None:
+        folderpath = Path.cwd().parent / 'results' / f'uGUIDE_{microstructure_model_name}'
+    folderpath.mkdir(exist_ok=True, parents=True)
+    config['folderpath'] = folderpath
     config['x_normalizer_file'] = x_normalizer_file
     config['theta_normalizer_file'] = theta_normalizer_file
     config['embedder_state_dict_file'] = embedder_state_dict_file
@@ -72,7 +74,7 @@ def create_config_uGUIDE(microstructure_model_name, size_x, prior,
 def save_config_uGUIDE(config, savefile='config.pkl', folderpath=None):
 
     if folderpath is None:
-        folderpath = config['folder_path']
+        folderpath = config['folderpath']
     with open(folderpath / savefile, 'wb') as f:
         pickle.dump(config, f)
         print(f'uGUIDE config successfully saved to {folderpath / savefile}')
