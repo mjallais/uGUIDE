@@ -52,6 +52,7 @@ def estimate_microstructure(x, config, postprocessing=None, voxel_id=0, plot=Tru
 
 def sample_posterior_distribution(x, config):
     # Only one observation at a time
+    # you can vectorize this, with a base distribution with the number of voxels in the shape 
 
     if x.ndim == 1:
         x = x.reshape(1,-1)
@@ -86,7 +87,13 @@ def sample_posterior_distribution(x, config):
     prior_min = np.array([config['prior'][p][0] for p in config['prior'].keys()])
     prior_max = np.array([config['prior'][p][1] for p in config['prior'].keys()])
     samples = np.zeros((nb_to_sample, config['size_theta']))
+
     while nb_to_sample > 0:
+
+        # I think this rejection sampling breaks the theory tbh
+        # I think it would be better to either:
+        # - constrain the flow so that it cannot yield samples outside the bounds
+        # - accept samples outside the bounds, and just clip those in post processing for plotting
 
         base_dist = dist.Normal(
             loc=torch.zeros((nb_to_sample,) + (config['size_theta'],)).to(config['device']),
@@ -163,6 +170,7 @@ def is_degenerate(param_gauss, prior_bounds):
     sign_d = sign_der(der)
     idx_der = np.where(sign_d[:-1] != sign_d[1:])[0] + 1
 
+    # I don't get this part
     # If idx_der contain two consecutive numbers, means it is a suprious spike.
     # Do not take it into account
     if len(idx_der) > 1:
@@ -192,6 +200,9 @@ def is_degenerate(param_gauss, prior_bounds):
 
 def estimate_max_a_posteriori(param_gauss, prior_bounds):
     x = np.linspace(prior_bounds[0], prior_bounds[1], 1000)
+    # so its the max of the gaussians, not the actual distribution ?
+    # also, you could be better off with a gradient ascent on the distribution, because the linspece willbe very coarse once
+    # the dimensions rises
     y = two_gaussians(x, param_gauss[0], param_gauss[1], param_gauss[2], param_gauss[3], param_gauss[4], param_gauss[5])
     map = x[y == y.max()]
     return map

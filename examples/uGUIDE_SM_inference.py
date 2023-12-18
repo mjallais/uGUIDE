@@ -19,6 +19,10 @@ bvals = np.loadtxt('bvals.bval')
 theta_train, x_train = preprocess_data(theta_train, x_train, bvals)
 
 #%%
+# perhaps those would be better off in separate files, like a .json that would be fed to the parser?
+# I would also separate the training of the NF and the inference into separate scripts, most of the time
+# people wouldn't retrain the NF
+
 prior = {'f': [0.0, 1.0],
          'Da': [0.1, 3.0],
          'ODI': [0.03, 0.95],
