@@ -4,6 +4,8 @@ import pyro.distributions.transforms as T
 
 def build_nf(input_dim, nf_features=32):
 
+    # perhaps have architecture kwargs fed as arguments (with defaults) ? 
+
     transforms = []
     for t in range(5):
         transform = T.conditional_affine_autoregressive(
@@ -22,13 +24,15 @@ def build_nf(input_dim, nf_features=32):
     return nf
 
 
-def get_nf(input_dim, nf_features, folder_path, nf_state_dict_file,
-           load_state=False):
+def get_nf(input_dim, nf_features, pretrained_state = None):
+
+
 
     nf = build_nf(input_dim=input_dim, nf_features=nf_features)
     
-    if load_state:
-        nf_state_dict = torch.load(folder_path / nf_state_dict_file)
+    # single argument, can be None if you want a fresh one
+    if pretrained_state is not None:
+        nf_state_dict = torch.load(pretrained_state)
         nf.load_state_dict(nf_state_dict)
         nf.eval()
     

@@ -20,6 +20,7 @@ def split_data(theta, X, val_ratio=0.05):
     n_data = len(theta)
     n_data_val = int(n_data * val_ratio)
 
+    # torch data loaders can deal with the shufle for you, at each epoch, I wouldn't bother
     perm = np.random.permutation(n_data)
 
     theta_train = theta[perm][n_data_val:]
