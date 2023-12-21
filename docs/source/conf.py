@@ -17,7 +17,7 @@
 
 # -- Project information -----------------------------------------------------
 
-project = 'uGUIDE'
+project = 'μGUIDE'
 copyright = '2023, Maëliss Jallais'
 author = 'Maëliss Jallais'
 
