@@ -35,17 +35,19 @@ def postprocess_SM(samples, config):
     u0 = samples[:,idx_u0]
     u1 = samples[:,idx_u1]
     # Set negative values to 0, otherwise get nan values
-    u0 = np.where(u0 < 0, 0, u0)
-    u1 = np.where(u1 < 0, 0, u1)
+    u0 = np.clip(u0, 0, 1)
+    u1 = np.clip(u0, 0, 1)
     De_par_min = config['prior_postprocessing']['De_par'][0]
     De_par_max = config['prior_postprocessing']['De_par'][1]
     De_perp_min = config['prior_postprocessing']['De_perp'][0]
     De_par = np.sqrt((De_par_max - De_par_min)**2 * u0) + De_par_min
     De_perp = (De_par - De_par_min) * u1 + De_perp_min
-    samples[:,idx_u0] = De_par
-    samples[:,idx_u1] = De_perp
+    
+    out_samples = samples.copy()
+    out_samples[:,idx_u0] = De_par
+    out_samples[:,idx_u1] = De_perp
 
-    return samples
+    return out_samples
 
 
 def postprocess_SANDI(samples, config):

@@ -40,17 +40,14 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
     # Or load pretrained ones if load_state=True
     nf = get_nf(input_dim=config['size_theta'],
                 nf_features=config['nf_features'],
-                folder_path=config['folderpath'],
-                nf_state_dict_file=config['nf_state_dict_file'],
-                load_state=load_state)
+                pretrained_state=config['folderpath'] / config['nf_state_dict_file']
+                )
     nf.to(config['device'])
     embedded_net = get_embedded_net(input_dim=config['size_x'],
                                     output_dim=config['nf_features'],
-                                    folder_path=config['folderpath'],
-                                    embedder_state_dict_file=config['embedder_state_dict_file'],
                                     layer_1_dim=config['hidden_layers'][0],
                                     layer_2_dim=config['hidden_layers'][1],
-                                    load_state=load_state)
+                                    pretrained_state=config['folderpath'] / config['embedder_state_dict_file'])
     embedded_net.to(config['device'])
 
     base_dist = dist.Normal(
