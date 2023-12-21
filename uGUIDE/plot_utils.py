@@ -30,16 +30,20 @@ def plot_posterior_distribution(samples, config,
         figsize=(5 * len(prior), 5),
         sharey="row"
     )
-    for i, param in enumerate(prior.keys()):
-        density = stats.gaussian_kde(samples[:,i], 'scott')
-        xd = np.linspace(prior[param][0], prior[param][1], 100)
-        yd = density(xd)
-        axs[i].plot(xd, yd)
-        axs[i].fill_between(xd, yd, alpha=0.5)
+    for p, param in enumerate(prior.keys()):
+
+        hist_sbi, bin_edges = np.histogram(samples[:,p], density=False, bins=50)
+        n = len(hist_sbi)
+        x_hist_sbi=np.zeros((n),dtype=float)
+        for ii in range(n):
+            x_hist_sbi[ii]=(bin_edges[ii+1]+bin_edges[ii])/2
+        axs[p].plot(x_hist_sbi, hist_sbi)
+        axs[p].fill_between(x_hist_sbi, hist_sbi, alpha=0.4)
         if ground_truth is not None:
-            axs[i].axvline(ground_truth[i], linestyle='--', color='k')
-        axs[i].set_xlabel(param, fontsize=20)
-        axs[i].set_xlim(prior[param][0], prior[param][1])
+            axs[p].axvline(ground_truth[p], linestyle='--', color='k')
+        axs[p].set_xlabel(param, fontsize=20)
+        axs[p].set_xlim(prior[param][0], prior[param][1])
+        axs[p].set_yticks([])
 
     fig.tight_layout()
     plt.savefig(config['folderpath'] / fig_file)
