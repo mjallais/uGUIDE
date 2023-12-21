@@ -44,6 +44,7 @@ def plot_posterior_distribution(samples, config,
         axs[p].set_xlabel(param, fontsize=20)
         axs[p].set_xlim(prior[param][0], prior[param][1])
         axs[p].set_yticks([])
+        axs[p].tick_params(axis='x', which='major', labelsize=20)
 
     fig.tight_layout()
     plt.savefig(config['folderpath'] / fig_file)
