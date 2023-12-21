@@ -1,12 +1,13 @@
 import numpy as np
 
-def preprocess_data(theta, x, bvals):
+def preprocess_data(theta, x, bvals, summ_stats=False):
 
     # Check data size
     if x.shape[0] != theta.shape[0]:
         raise ValueError('Number of samples in theta and x do not match.')
-    if x.shape[1] != bvals.shape[0]:
-        raise ValueError('x size does not match the number of b-values.')
+    if summ_stats == False:
+        if x.shape[1] != bvals.shape[0]:
+            raise ValueError('x size does not match the number of b-values.')
 
     # Remove nan and inf present in the input signals
     for data in [x, theta]:
@@ -18,13 +19,13 @@ def preprocess_data(theta, x, bvals):
         x = np.delete(x, idx_inf[0], 0)
         theta = np.delete(theta, idx_inf[0], 0)
 
-    # Normalize signal wrt b0
-    x_norm=np.zeros_like(x)
-    x0 = x[:, bvals == 0].mean(1)
-    for i in np.arange(x.shape[0]):
-        x_norm[i,:] = x[i,:] / x0[i]
+    if summ_stats == False:
+        # Normalize signal wrt b0
+        x0 = x[:, bvals == 0].mean(1, keepdims=True)
+        x_norm = x / x0
+        x = x_norm
 
-    return theta, x_norm
+    return theta, x
 
 
 def postprocess_SM(samples, config):
