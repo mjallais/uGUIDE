@@ -83,10 +83,12 @@ def sample_posterior_distribution(x, config):
 
     # Rejection sampling
     nb_to_sample = config['nb_samples']
+    loop_iter = 0
+    max_loop_iter = 5000
     prior_min = np.array([config['prior'][p][0] for p in config['prior'].keys()])
     prior_max = np.array([config['prior'][p][1] for p in config['prior'].keys()])
     samples = np.zeros((nb_to_sample, config['size_theta']))
-    while nb_to_sample > 0:
+    while (nb_to_sample > 0) & (loop_iter < max_loop_iter):
 
         base_dist = dist.Normal(
             loc=torch.zeros((nb_to_sample,) + (config['size_theta'],)).to(config['device']),
@@ -100,12 +102,22 @@ def sample_posterior_distribution(x, config):
 
         theta_normalizer = load_normalizer(config['folderpath'] / config['theta_normalizer_file'])
         candidates = theta_normalizer.inverse(samples_norm.detach().cpu().numpy())
-        accepted = (candidates > prior_min).all(1) & (candidates < prior_max).all(1)
-        if nb_to_sample == config['nb_samples']:
+
+        if (loop_iter == 100) & (len(samples) == 0):
+            accepted = np.ones(accepted.shape, dtype=bool)
+        elif (loop_iter < max_loop_iter):
+            accepted = (candidates > prior_min).all(1) & (candidates < prior_max).all(1)
+        else:
+            accepted = np.ones(accepted.shape, dtype=bool)
+            print(f'Nb good samples: {len(samples)}')
+
+        if nb_to_sample == config['nb_samples']: # first iteration
             samples = candidates[accepted]
         else:
             samples = np.append(samples, candidates[accepted], axis=0)
+
         nb_to_sample = config['nb_samples'] - len(samples)
+        loop_iter += 1
 
     return samples
 
