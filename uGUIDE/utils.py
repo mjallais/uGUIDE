@@ -52,7 +52,9 @@ def create_config_uGUIDE(microstructure_model_name, size_x, prior,
             print('GPU usage requested, but cuda could not be found. Device ' \
                   'set to CPU instead')
             config['device'] = 'cpu'
-    elif device == 'cpu' or device == 'cuda':
+        else:
+            config['device'] = 'cuda'
+    elif device == 'cpu':
         config['device'] = device
     else:
         raise ValueError('Device not supported. Choose between cpu and cuda.')

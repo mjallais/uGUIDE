@@ -19,24 +19,25 @@ def estimate_microstructure(x, config, postprocessing=None, voxel_id=0, plot=Tru
     map, mask, degeneracy_mask, uncertainty, ambiguity = estimate_theta(samples,
                                                                         config,
                                                                         postprocessing=postprocessing is not None)
+    folderpath = config['folderpath'] / 'posterior_distributions'
+    folderpath.mkdir(exist_ok=True, parents=True)
 
     if mask.all() == False: # If at least one is False
         param_fail = np.array(list(config["prior_postprocessing"].keys()))[mask == False]
         print(f'Microstructure estimation of voxel {voxel_id} did not work. '\
               'Unable to fit two Gaussians on the posterior distribution of '
               f'{", ".join(param_fail)}.')
-        plot_posterior_distribution(samples, config,
-                                    postprocessing=postprocessing is not None,
-                                    fig_file=f'posterior_distribution_masked_voxel_{voxel_id}_fail_{"_".join(param_fail)}.png')
 
     elif plot == True:
         if postprocessing is None:
             plot_posterior_distribution(samples, config, postprocessing=False,
-                                        ground_truth=theta_gt)
+                                        ground_truth=theta_gt,
+                                        fig_file=f'posterior_distributions/posterior_distribution_voxel_{voxel_id}.png')
             print(f'Parameters: {list(config["prior"].keys())}')
         else:
             plot_posterior_distribution(samples, config, postprocessing=True,
-                                        ground_truth=theta_gt)
+                                        ground_truth=theta_gt,
+                                        fig_file=f'posterior_distributions/posterior_distribution_voxel_{voxel_id}.png')
             print(f'Parameters: {list(config["prior_postprocessing"].keys())}')
         
         if theta_gt is not None:
