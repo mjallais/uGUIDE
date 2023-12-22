@@ -12,6 +12,65 @@ from uGUIDE.plot_utils import plot_posterior_distribution
 
 
 def estimate_microstructure(x, config, postprocessing=None, voxel_id=0, plot=True, theta_gt=None):
+    """
+    Estimate microstructure parameters given an observed diffusion MRI signal.
+    The posterior distributions are obtained by sampling from the normalizing 
+    flow. If a problem occurs, mask is set to False for the corresponding 
+    parameter(s). Then the posterior distribution is defined as degenerate or not.
+    Finally this function extracts and returns the maximum-a-posteriori, the
+    uncertainty and the ambiguity from the estimated posterior distributions.
+
+    Parameters
+    ----------
+    x : array, shape (x_size,)
+        Observed diffusion MRI signal. Its size must be identical to the signals
+        used for training (i.e. ``config['size_x']``)
+    
+    config : dict
+        μGUIDE configuration.
+    
+    postprocessing : function, optional
+        If one or multiple microstructure parameters in the model definition
+        are not uniformly distributed, surrogate parameters need to be used
+        instead during training. This function allows to convert those surrogate
+        parameters into the model microstructure parameters. If set to None, no
+        conversion is performed.
+    
+    voxel_id : int, default=0
+        ID of the current voxel. Used to set the name when saving the posterior
+        distribution plots.
+    
+    plot : bool, default=True
+        Whether to save the posterior distributions.
+    
+    theta_gt : ndarray, optional
+        Ground truth value corresponding to the observed signal x, whith size 
+        (config['size_theta'],). Used when testing on simulations. Adds a
+        vertical dashed black line on the plotted posterior distributions.
+
+    Returns
+    -------
+    map : ndarray, shape (config['size_theta'],)
+        Maximum-a-posteriori estimated for each microstructure parameter from
+        the posterior distributions.
+    
+    mask : ndarray, shape (config['size_theta'],)
+        Default to ``True``. Set to False if a parameter estimation did not
+        work.
+
+    degeneracy_mask : ndarray, shape (config['size_theta'],)
+        Set to ``True`` if a posterior distribution is defined as degenerate.
+        ``False`` otherwise.
+
+    uncertainty : ndarray, shape (config['size_theta'],)
+        Uncertainty measure estimated for each microstructure parameter from
+        the posterior distributions (in %).
+
+    ambiguity : ndarray, shape (config['size_theta'],)
+        Ambiguity measure estimated for each microstructure parameter from
+        the posterior distributions (in %).
+
+    """
     samples = sample_posterior_distribution(x, config)
     if postprocessing is not None:
         samples = postprocessing(samples, config)
