@@ -24,20 +24,21 @@ To get started, install ``μGUIDE`` on your machine via pip:
 conda create -n uGUIDE_env python=3.8 && conda activate uGUIDE_env
 ```
 
-2. Fork the repository and run the following command to clone it on your local machine
+2. Fork the repository and run the following command to clone it on your local machine:
 
 ```shell
 git clone git@github.com:{YOUR_GITHUB_USERNAME}/uGUIDE.git
 ```
 
-4. ``cd`` to ``μGUIDE`` directory and install it 
+3. ``cd`` to ``μGUIDE`` directory and install it:
 
 ```shell
 cd uGUIDE
 pip install .
 ```
+This will also install the dependencies of ``μGUIDE``.
 
-To check if the installation worked fine, you can do:
+4. To check if the installation worked fine, you can do:
 
 ```shell
 python -c 'import uGUIDE'
