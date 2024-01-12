@@ -1,12 +1,8 @@
 #%%
-%load_ext autoreload
-%autoreload 2
-
-#%%
 import numpy as np
 import pandas as pd
 
-from uGUIDE.utils import create_config_uGUIDE, save_config_uGUIDE
+from uGUIDE.config_utils import create_config_uGUIDE, save_config_uGUIDE
 from uGUIDE.data_utils import preprocess_data, postprocess_SM
 from uGUIDE.inference import run_inference
 from uGUIDE.estimation import estimate_microstructure

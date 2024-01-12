@@ -19,8 +19,8 @@ def preprocess_data(theta, x, bvals, summ_stats=False):
         x = np.delete(x, idx_inf[0], 0)
         theta = np.delete(theta, idx_inf[0], 0)
 
+    # Normalize signal wrt b0
     if summ_stats == False:
-        # Normalize signal wrt b0
         x0 = x[:, bvals == 0].mean(1, keepdims=True)
         x_norm = x / x0
         x = x_norm
@@ -30,6 +30,7 @@ def preprocess_data(theta, x, bvals, summ_stats=False):
 
 def postprocess_SM(samples, config):
 
+    # Convert u0 and u1 into De_par and De_perp
     idx_u0 = np.where(np.array(list(config['prior'].keys())) == 'u0')[0]
     idx_u1 = np.where(np.array(list(config['prior'].keys())) == 'u1')[0]
     u0 = samples[:,idx_u0]
@@ -52,6 +53,7 @@ def postprocess_SM(samples, config):
 
 def postprocess_SANDI(samples, config):
 
+    # Convert k1 and k2 into fn, fs and fe
     idx_k1 = np.where(np.array(list(config['prior'].keys())) == 'k1')[0]
     idx_k2 = np.where(np.array(list(config['prior'].keys())) == 'k2')[0]
     k1 = samples[:,idx_k1]

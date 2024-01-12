@@ -12,6 +12,29 @@ from uGUIDE.embedded_net import get_embedded_net
 from uGUIDE.normalization import get_normalizer, save_normalizer
 
 def run_inference(theta, x, config, plot_loss=True, load_state=False):
+    """
+    Run inference given a training dataset.
+
+    Parameters
+    ----------
+    theta : ndarray, shape (nb_simulations, config['size_theta'])
+        Microstructure parameters used for the training. 
+    
+    x : ndarray, shape (nb_simulations, config['size_x'])
+        Observed diffusion MRI signals corresponding to the theta.
+
+    config : dict
+        μGUIDE configuration.
+
+    plot_loss : bool, default=True
+        Plot the validation loss evolution during training.
+
+    load_state: bool, default=False
+        If training has already been performed, load the state
+        of the neural networks saved if set to ``True``, and continue training.
+        Otherwise, start a new inference.
+
+    """
     
     # check if size(x) is compatible with size within config file
     if config['size_theta'] != theta.shape[1]:
@@ -38,16 +61,27 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
     val_dataloader = DataLoader(val_dataset, batch_size=4_096)
     # Initialize NF and the embedded neural network
     # Or load pretrained ones if load_state=True
-    nf = get_nf(input_dim=config['size_theta'],
-                nf_features=config['nf_features'],
-                pretrained_state=config['folderpath'] / config['nf_state_dict_file']
-                )
+    if load_state == True:
+        nf = get_nf(input_dim=config['size_theta'],
+                    nf_features=config['nf_features'],
+                    pretrained_state=config['folderpath'] / config['nf_state_dict_file']
+                    )
+        embedded_net = get_embedded_net(input_dim=config['size_x'],
+                                        output_dim=config['nf_features'],
+                                        layer_1_dim=config['hidden_layers'][0],
+                                        layer_2_dim=config['hidden_layers'][1],
+                                        pretrained_state=config['folderpath'] / config['embedder_state_dict_file'])
+    else:
+        nf = get_nf(input_dim=config['size_theta'],
+                    nf_features=config['nf_features'],
+                    pretrained_state=None
+                    )
+        embedded_net = get_embedded_net(input_dim=config['size_x'],
+                                        output_dim=config['nf_features'],
+                                        layer_1_dim=config['hidden_layers'][0],
+                                        layer_2_dim=config['hidden_layers'][1],
+                                        pretrained_state=None)
     nf.to(config['device'])
-    embedded_net = get_embedded_net(input_dim=config['size_x'],
-                                    output_dim=config['nf_features'],
-                                    layer_1_dim=config['hidden_layers'][0],
-                                    layer_2_dim=config['hidden_layers'][1],
-                                    pretrained_state=config['folderpath'] / config['embedder_state_dict_file'])
     embedded_net.to(config['device'])
 
     base_dist = dist.Normal(
