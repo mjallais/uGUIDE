@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "numpy", "torch", "pandas", "tqdm"] 
+requires = ["setuptools>=61.0"] 
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -16,6 +16,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+dependencies = ["numpy", "torch", "scipy", "pandas", "tqdm", "pyro-ppl", "matplotlib", "joblib"]
 
 [project.urls]
 "Homepage" = "https://github.com/mjallais/uGUIDE"
