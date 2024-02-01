@@ -14,14 +14,17 @@ def build_embedder_MLP(input_dim, output_dim, layer_1_dim=128, layer_2_dim=64):
     return embedder
 
 def get_embedded_net(input_dim, output_dim, layer_1_dim=128, layer_2_dim=64,
-                     pretrained_state=None):
+                     pretrained_state=None, use_MLP=True):
 
-    embedded_net = build_embedder_MLP(input_dim=input_dim, output_dim=output_dim, 
-                                       layer_1_dim=layer_1_dim, layer_2_dim=layer_2_dim)
+    if use_MLP == False:
+        embedded_net = nn.Identity()
+    else:
+        embedded_net = build_embedder_MLP(input_dim=input_dim, output_dim=output_dim, 
+                                        layer_1_dim=layer_1_dim, layer_2_dim=layer_2_dim)
     
-    if pretrained_state is not None:
-        embedder_state_dict = torch.load(pretrained_state)
-        embedded_net.load_state_dict(embedder_state_dict)
-        embedded_net.eval()
-    
+        if pretrained_state is not None:
+            embedder_state_dict = torch.load(pretrained_state)
+            embedded_net.load_state_dict(embedder_state_dict)
+            embedded_net.eval()
+        
     return embedded_net

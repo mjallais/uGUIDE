@@ -17,6 +17,7 @@ def create_config_uGUIDE(microstructure_model_name,
                          device=None,
                          nf_features=32,
                          hidden_layers=[128,64],
+                         use_MLP=True,
                          learning_rate=1e-3,
                          max_epochs=500,
                          n_epochs_no_change=10,
@@ -70,12 +71,18 @@ def create_config_uGUIDE(microstructure_model_name,
             Device for running the inference and estimations. If ``None``,
             check if 'cuda' is available. If not, use 'cpu'.
     
+    use_MLP : bool, default=True
+            By default, use the MLP for dimension reduction. Set to False to 
+            avoid dimensionality reduction and directly use the input signal.
+            In this case, nf_features is set to the the size of the input 
+            signal.
+
     nf_features : int, default=32
             Number of features extracted by the MLP. 
     
     hidden_layers : list, defaults=[128,64]
-        Number of hidden units per layer for the MLP, used for the features
-        extraction.
+            Number of hidden units per layer for the MLP, used for the features
+            extraction.
 
     learning_rate : float, default=1e-3
             Learning rate for the Adam optimizer.
@@ -92,7 +99,7 @@ def create_config_uGUIDE(microstructure_model_name,
             results.
     
     nb_samples : int, default=50_000
-        Number of samples drawn from the posterior distribution.
+            Number of samples drawn from the posterior distribution.
 
     Returns
     -------
@@ -145,7 +152,11 @@ def create_config_uGUIDE(microstructure_model_name,
     else:
         raise ValueError('Device not supported. Choose between cpu and cuda.')
 
-    config['nf_features'] = nf_features
+    config['use_MLP'] = use_MLP
+    if config['use_MLP'] == True:
+        config['nf_features'] = nf_features
+    else:
+        config['nf_features'] = config['size_x']
     config['learning_rate'] = learning_rate
     config['max_epochs'] = max_epochs
     config['n_epochs_no_change'] = n_epochs_no_change
