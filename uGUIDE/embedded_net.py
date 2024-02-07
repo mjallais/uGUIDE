@@ -20,7 +20,7 @@ def get_embedded_net(input_dim, output_dim, layer_1_dim=128, layer_2_dim=64,
         embedded_net = nn.Identity()
     else:
         embedded_net = build_embedder_MLP(input_dim=input_dim, output_dim=output_dim, 
-                                        layer_1_dim=layer_1_dim, layer_2_dim=layer_2_dim)
+                                          layer_1_dim=layer_1_dim, layer_2_dim=layer_2_dim)
     
         if pretrained_state is not None:
             embedder_state_dict = torch.load(pretrained_state)

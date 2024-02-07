@@ -32,13 +32,13 @@ def plot_posterior_distribution(samples, config,
     )
     for p, param in enumerate(prior.keys()):
 
-        hist_sbi, bin_edges = np.histogram(samples[:,p], density=False, bins=50)
-        n = len(hist_sbi)
-        x_hist_sbi=np.zeros((n),dtype=float)
+        hist_uGUIDE, bin_edges = np.histogram(samples[:,p], density=False, bins=50)
+        n = len(hist_uGUIDE)
+        x_hist_uGUIDE=np.zeros((n),dtype=float)
         for ii in range(n):
-            x_hist_sbi[ii]=(bin_edges[ii+1]+bin_edges[ii])/2
-        axs[p].plot(x_hist_sbi, hist_sbi)
-        axs[p].fill_between(x_hist_sbi, hist_sbi, alpha=0.4)
+            x_hist_uGUIDE[ii]=(bin_edges[ii+1]+bin_edges[ii])/2
+        axs[p].plot(x_hist_uGUIDE, hist_uGUIDE)
+        axs[p].fill_between(x_hist_uGUIDE, hist_uGUIDE, alpha=0.4)
         if ground_truth is not None:
             axs[p].axvline(ground_truth[p], linestyle='--', color='k')
         axs[p].set_xlabel(param, fontsize=20)
