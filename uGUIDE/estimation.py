@@ -134,7 +134,8 @@ def sample_posterior_distribution(x, config):
                                     output_dim=config['nf_features'],
                                     layer_1_dim=config['hidden_layers'][0],
                                     layer_2_dim=config['hidden_layers'][1],
-                                    pretrained_state=config['folderpath'] / config['embedder_state_dict_file'])
+                                    pretrained_state=config['folderpath'] / config['embedder_state_dict_file'],
+                                    use_MLP=config['use_MLP'])
     embedded_net.to(config['device'])
     embedding = embedded_net(x_norm.type(torch.float32).to(config['device']))
 
