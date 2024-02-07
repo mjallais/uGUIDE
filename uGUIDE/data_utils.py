@@ -37,7 +37,7 @@ def postprocess_SM(samples, config):
     u1 = samples[:,idx_u1]
     # Set negative values to 0, otherwise get nan values
     u0 = np.clip(u0, 0, 1)
-    u1 = np.clip(u0, 0, 1)
+    u1 = np.clip(u1, 0, 1)
     De_par_min = config['prior_postprocessing']['De_par'][0]
     De_par_max = config['prior_postprocessing']['De_par'][1]
     De_perp_min = config['prior_postprocessing']['De_perp'][0]
