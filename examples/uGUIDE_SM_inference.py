@@ -29,11 +29,14 @@ config = create_config_uGUIDE(microstructure_model_name='Standard_Model',
                               size_x=x_train.shape[1],
                               prior=prior,
                               prior_postprocessing=prior_postprocessing,
+                              use_MLP=True,
                               nf_features=6,
-                              nb_samples=50_000,
                               max_epochs=200,
+                              n_epochs_no_change=10,
+                              nb_samples=50_000,
                               random_seed=1234)
 save_config_uGUIDE(config, savefile='config_postprocessing.pkl')
+print(f'Device used for computations: {config["device"]}')
 
 #%%
 run_inference(theta_train, x_train, config=config,
