@@ -48,5 +48,6 @@ def plot_posterior_distribution(samples, config,
 
     fig.tight_layout()
     plt.savefig(config['folderpath'] / fig_file)
+    plt.close()
     
     return
