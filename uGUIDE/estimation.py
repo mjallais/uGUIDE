@@ -82,7 +82,10 @@ def estimate_microstructure(x, config, postprocessing=None, voxel_id=0, plot=Tru
     folderpath.mkdir(exist_ok=True, parents=True)
 
     if mask.all() == False: # If at least one is False
-        param_fail = np.array(list(config["prior_postprocessing"].keys()))[mask == False]
+        if postprocessing is not None:
+            param_fail = np.array(list(config["prior_postprocessing"].keys()))[mask == False]
+        else:
+            param_fail = np.array(list(config["prior"].keys()))[mask == False]
         print(f'Microstructure estimation of voxel {voxel_id} did not work. '\
               'Unable to fit two Gaussians on the posterior distribution of '
               f'{", ".join(param_fail)}.')
