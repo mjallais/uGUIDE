@@ -8,7 +8,7 @@ Installation
 
 To use μGUIDE, first install it using pip:
 
-1. We recommend to use a  [`conda`](https://docs.conda.io/en/latest/miniconda.html) virtual environment. If `conda` is installed on your machine, an environment for installing ``μGUIDE`` can be created as follows:
+1. We recommend to use a  `conda <https://docs.conda.io/en/latest/miniconda.html>`_ virtual environment. If `conda` is installed on your machine, an environment for installing ``μGUIDE`` can be created as follows:
 
 .. code-block:: console
 
