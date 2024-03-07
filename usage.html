@@ -36,9 +36,33 @@
 <section id="installation">
 <span id="id1"></span><h2>Installation<a class="headerlink" href="#installation" title="Permalink to this heading">¶</a></h2>
 <p>To use μGUIDE, first install it using pip:</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp gp-VirtualEnv">(.venv)</span> <span class="gp">$ </span>pip<span class="w"> </span>install<span class="w"> </span>.
+<ol class="arabic simple">
+<li><p>We recommend to use a  [<cite>conda</cite>](<a class="reference external" href="https://docs.conda.io/en/latest/miniconda.html">https://docs.conda.io/en/latest/miniconda.html</a>) virtual environment. If <cite>conda</cite> is installed on your machine, an environment for installing <code class="docutils literal notranslate"><span class="pre">μGUIDE</span></code> can be created as follows:</p></li>
+</ol>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>conda<span class="w"> </span>create<span class="w"> </span>-n<span class="w"> </span>uGUIDE_env<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.8<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>conda<span class="w"> </span>activate<span class="w"> </span>uGUIDE_env
 </pre></div>
 </div>
+<ol class="arabic simple" start="2">
+<li><p>Fork the repository and run the following command to clone it on your local machine:</p></li>
+</ol>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp gp-VirtualEnv">(uGUIDE_env)</span> <span class="gp">$ </span>git<span class="w"> </span>clone<span class="w"> </span>git@github.com:<span class="o">{</span>YOUR_GITHUB_USERNAME<span class="o">}</span>/uGUIDE.git
+</pre></div>
+</div>
+<ol class="arabic simple" start="3">
+<li><p><code class="docutils literal notranslate"><span class="pre">cd</span></code> to <code class="docutils literal notranslate"><span class="pre">μGUIDE</span></code> directory and install it:</p></li>
+</ol>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp gp-VirtualEnv">(uGUIDE_env)</span> <span class="gp">$ </span><span class="nb">cd</span><span class="w"> </span>uGUIDE
+<span class="gp gp-VirtualEnv">(uGUIDE_env)</span> <span class="gp">$ </span>pip<span class="w"> </span>install<span class="w"> </span>.
+</pre></div>
+</div>
+<p>This will also install the dependencies of <code class="docutils literal notranslate"><span class="pre">μGUIDE</span></code>.</p>
+<ol class="arabic simple" start="4">
+<li><p>To check if the installation worked fine, you can run:</p></li>
+</ol>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp gp-VirtualEnv">(uGUIDE_env)</span> <span class="gp">$ </span>python<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;import uGUIDE&#39;</span>
+</pre></div>
+</div>
+<p>and it should not give any error message.</p>
 </section>
 </section>
 
