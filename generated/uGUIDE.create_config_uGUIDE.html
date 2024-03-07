@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>uGUIDE.create_config_uGUIDE &#8212; μGUIDE 0.1 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=4f649999" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=cb25574f" />
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=e031e9a9"></script>
+    <script src="../_static/doctools.js?v=888ff710"></script>
+    <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="uGUIDE.save_config_uGUIDE" href="uGUIDE.save_config_uGUIDE.html" />
+    <link rel="prev" title="API" href="../api.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="uguide-create-config-uguide">
+<h1>uGUIDE.create_config_uGUIDE<a class="headerlink" href="#uguide-create-config-uguide" title="Permalink to this heading">¶</a></h1>
+<dl class="py function">
+<dt class="sig sig-object py" id="uGUIDE.create_config_uGUIDE">
+<span class="sig-prename descclassname"><span class="pre">uGUIDE.</span></span><span class="sig-name descname"><span class="pre">create_config_uGUIDE</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">microstructure_model_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size_x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_postprocessing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">folderpath</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_normalizer_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'x_normalizer.p'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">theta_normalizer_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'theta_normalizer.p'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">embedder_state_dict_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'torch_embedder.pt'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nf_state_dict_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'torch_nf.pt'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_MLP</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nf_features</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hidden_layers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[128,</span> <span class="pre">64]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">learning_rate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_epochs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">500</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_epochs_no_change</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nb_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50000</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#uGUIDE.create_config_uGUIDE" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a configuration file for the inference and microstructure parameters
+estimation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><dl class="simple">
+<dt><strong>microstructure_model_name</strong><span class="classifier">str</span></dt><dd><p>Name of the model, used for saving the results</p>
+</dd>
+<dt><strong>size_x</strong><span class="classifier">int</span></dt><dd><p>Size of the input data. Used to check inference and estimations
+are done on the same data.</p>
+</dd>
+<dt><strong>prior</strong><span class="classifier">dict</span></dt><dd><p>Contains names of the model parameters used for inference with the
+minimum and maximum bounds of the Uniform prior distributions.</p>
+</dd>
+<dt><strong>prior_postprocessing</strong><span class="classifier">dict, optional</span></dt><dd><p>Contains names of the model parameters after postprocessing with
+the minimum and maximum bounds of the parameters. This is useful 
+when the model parameters have constraints, making their prior
+distributions non-uniform, such as the Standard Model.
+If same as prior, set as <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+<dt><strong>folderpath</strong><span class="classifier">str or Path, optional</span></dt><dd><p>Path for saving the results. If None, default location will be 
+<cite>results/uGUIDE_{microstructure_model_name}</cite>.</p>
+</dd>
+<dt><strong>x_normalizer_file</strong><span class="classifier">str, default=’x_normalizer.p’</span></dt><dd><p>Name of the file for saving the normalizer of the input signal.</p>
+</dd>
+<dt><strong>theta_normalizer_file</strong><span class="classifier">str, defualt=’theta_normalizer.p’</span></dt><dd><p>Name of the file for saving the normalizer of the microstructure 
+parameters theta.</p>
+</dd>
+<dt><strong>embedder_state_dict_file: str, default=’torch_embedder_SM.pt’</strong></dt><dd><p>Name of the file for saving the embedded neural network after
+training.</p>
+</dd>
+<dt><strong>nf_state_dict_file</strong><span class="classifier">str, default=’torch_nf_SM.pt’</span></dt><dd><p>Name of the file for saving the normalizing flow after
+training.</p>
+</dd>
+<dt><strong>device</strong><span class="classifier">{‘cpu’, ‘cuda’}, optional</span></dt><dd><p>Device for running the inference and estimations. If <code class="docutils literal notranslate"><span class="pre">None</span></code>,
+check if ‘cuda’ is available. If not, use ‘cpu’.</p>
+</dd>
+<dt><strong>use_MLP</strong><span class="classifier">bool, default=True</span></dt><dd><p>By default, use the MLP for dimension reduction. Set to False to 
+avoid dimensionality reduction and directly use the input signal.
+In this case, nf_features is set to the the size of the input 
+signal.</p>
+</dd>
+<dt><strong>nf_features</strong><span class="classifier">int, default=32</span></dt><dd><p>Number of features extracted by the MLP.</p>
+</dd>
+<dt><strong>hidden_layers</strong><span class="classifier">list, defaults=[128,64]</span></dt><dd><p>Number of hidden units per layer for the MLP, used for the features
+extraction.</p>
+</dd>
+<dt><strong>learning_rate</strong><span class="classifier">float, default=1e-3</span></dt><dd><p>Learning rate for the Adam optimizer.</p>
+</dd>
+<dt><strong>max_epochs</strong><span class="classifier">int, default=500</span></dt><dd><p>Maximum number of epochs for the inference.</p>
+</dd>
+<dt><strong>n_epochs_no_change</strong><span class="classifier">int, default=10</span></dt><dd><p>Number of epochs to wait for improvement on the validation set
+before stopping training.</p>
+</dd>
+<dt><strong>random_seed</strong><span class="classifier">int, optional</span></dt><dd><p>Determines random number generation. Pass an int for reproducible
+results.</p>
+</dd>
+<dt><strong>nb_samples</strong><span class="classifier">int, default=50_000</span></dt><dd><p>Number of samples drawn from the posterior distribution.</p>
+</dd>
+</dl>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><dl class="simple">
+<dt><strong>config</strong><span class="classifier">dict</span></dt><dd><p>Configuration file used for inference and microstructure parameters
+estimation.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">μGUIDE</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../usage.html">Usage</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../api.html">API</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../api.html#guide-configuration">μGUIDE configuration</a><ul class="current">
+<li class="toctree-l3 current"><a class="current reference internal" href="#">uGUIDE.create_config_uGUIDE</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#uGUIDE.create_config_uGUIDE"><code class="docutils literal notranslate"><span class="pre">create_config_uGUIDE()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="uGUIDE.save_config_uGUIDE.html">uGUIDE.save_config_uGUIDE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="uGUIDE.load_config_uGUIDE.html">uGUIDE.load_config_uGUIDE</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../api.html#inference">Inference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../api.html#microstructure-parameters-estimation">Microstructure parameters estimation</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="../api.html">API</a><ul>
+      <li>Previous: <a href="../api.html" title="previous chapter">API</a></li>
+      <li>Next: <a href="uGUIDE.save_config_uGUIDE.html" title="next chapter">uGUIDE.save_config_uGUIDE</a></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2023, Maëliss Jallais.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 7.1.2</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="../_sources/generated/uGUIDE.create_config_uGUIDE.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

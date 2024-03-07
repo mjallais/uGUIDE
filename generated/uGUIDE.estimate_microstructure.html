@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>uGUIDE.estimate_microstructure &#8212; μGUIDE 0.1 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=4f649999" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=cb25574f" />
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=e031e9a9"></script>
+    <script src="../_static/doctools.js?v=888ff710"></script>
+    <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="uGUIDE.run_inference" href="uGUIDE.run_inference.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="uguide-estimate-microstructure">
+<h1>uGUIDE.estimate_microstructure<a class="headerlink" href="#uguide-estimate-microstructure" title="Permalink to this heading">¶</a></h1>
+<dl class="py function">
+<dt class="sig sig-object py" id="uGUIDE.estimate_microstructure">
+<span class="sig-prename descclassname"><span class="pre">uGUIDE.</span></span><span class="sig-name descname"><span class="pre">estimate_microstructure</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">postprocessing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">voxel_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">theta_gt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#uGUIDE.estimate_microstructure" title="Permalink to this definition">¶</a></dt>
+<dd><p>Estimate microstructure parameters given an observed diffusion MRI signal.
+The posterior distributions are obtained by sampling from the normalizing 
+flow. If a problem occurs, mask is set to False for the corresponding 
+parameter(s). Then the posterior distribution is defined as degenerate or not.
+Finally this function extracts and returns the maximum-a-posteriori, the
+uncertainty and the ambiguity from the estimated posterior distributions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><dl class="simple">
+<dt><strong>x</strong><span class="classifier">array, shape (x_size,)</span></dt><dd><p>Observed diffusion MRI signal. Its size must be identical to the signals
+used for training (i.e. <code class="docutils literal notranslate"><span class="pre">config['size_x']</span></code>)</p>
+</dd>
+<dt><strong>config</strong><span class="classifier">dict</span></dt><dd><p>μGUIDE configuration.</p>
+</dd>
+<dt><strong>postprocessing</strong><span class="classifier">function, optional</span></dt><dd><p>If one or multiple microstructure parameters in the model definition
+are not uniformly distributed, surrogate parameters need to be used
+instead during training. This function allows to convert those surrogate
+parameters into the model microstructure parameters. If set to None, no
+conversion is performed.</p>
+</dd>
+<dt><strong>voxel_id</strong><span class="classifier">int, default=0</span></dt><dd><p>ID of the current voxel. Used to set the name when saving the posterior
+distribution plots.</p>
+</dd>
+<dt><strong>plot</strong><span class="classifier">bool, default=True</span></dt><dd><p>Whether to save the posterior distributions.</p>
+</dd>
+<dt><strong>theta_gt</strong><span class="classifier">ndarray, optional</span></dt><dd><p>Ground truth value corresponding to the observed signal x, whith size 
+(config[‘size_theta’],). Used when testing on simulations. Adds a
+vertical dashed black line on the plotted posterior distributions.</p>
+</dd>
+</dl>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><dl class="simple">
+<dt><strong>map</strong><span class="classifier">ndarray, shape (config[‘size_theta’],)</span></dt><dd><p>Maximum-a-posteriori estimated for each microstructure parameter from
+the posterior distributions.</p>
+</dd>
+<dt><strong>mask</strong><span class="classifier">ndarray, shape (config[‘size_theta’],)</span></dt><dd><p>Default to <code class="docutils literal notranslate"><span class="pre">True</span></code>. Set to False if a parameter estimation did not
+work.</p>
+</dd>
+<dt><strong>degeneracy_mask</strong><span class="classifier">ndarray, shape (config[‘size_theta’],)</span></dt><dd><p>Set to <code class="docutils literal notranslate"><span class="pre">True</span></code> if a posterior distribution is defined as degenerate.
+<code class="docutils literal notranslate"><span class="pre">False</span></code> otherwise.</p>
+</dd>
+<dt><strong>uncertainty</strong><span class="classifier">ndarray, shape (config[‘size_theta’],)</span></dt><dd><p>Uncertainty measure estimated for each microstructure parameter from
+the posterior distributions (in %).</p>
+</dd>
+<dt><strong>ambiguity</strong><span class="classifier">ndarray, shape (config[‘size_theta’],)</span></dt><dd><p>Ambiguity measure estimated for each microstructure parameter from
+the posterior distributions (in %).</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">μGUIDE</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../usage.html">Usage</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../api.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../api.html#guide-configuration">μGUIDE configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../api.html#inference">Inference</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../api.html#microstructure-parameters-estimation">Microstructure parameters estimation</a><ul class="current">
+<li class="toctree-l3 current"><a class="current reference internal" href="#">uGUIDE.estimate_microstructure</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#uGUIDE.estimate_microstructure"><code class="docutils literal notranslate"><span class="pre">estimate_microstructure()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="../api.html">API</a><ul>
+      <li>Previous: <a href="uGUIDE.run_inference.html" title="previous chapter">uGUIDE.run_inference</a></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2023, Maëliss Jallais.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 7.1.2</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="../_sources/generated/uGUIDE.estimate_microstructure.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
