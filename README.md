@@ -1,5 +1,7 @@
 # μGUIDE
 
+[Documentation](https://mjallais.github.io/uGUIDE/)
+
 This is the official implementation of ``μGUIDE`` presented in https://arxiv.org/abs/2312.17293. To cite it, please use:
 ```bibtex
 @misc{jallais2023muguide,
@@ -45,6 +47,8 @@ python -c 'import uGUIDE'
 ```
 
 and it should not give any error message.
+
+Visit [``μGUIDE`` documentation](https://mjallais.github.io/uGUIDE/) for more information.
 
 ## Cite
 
