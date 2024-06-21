@@ -99,7 +99,7 @@ def estimate_microstructure(x, config, postprocessing=None, voxel_id=0, plot=Tru
         else:
             plot_posterior_distribution(samples, config, postprocessing=True,
                                         ground_truth=theta_gt,
-                                        fig_file=f'posterior_distributions/posterior_distribution_voxel_{voxel_id}.png')
+                                        fig_file=f'posterior_distributions/posterior_distribution_voxel_{voxel_id}_postprocessing.png')
             print(f'Parameters: {list(config["prior_postprocessing"].keys())}')
         
         if theta_gt is not None:
