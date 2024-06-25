@@ -156,7 +156,8 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
         plt.ylabel("Loss")
         plt.yscale("symlog")
         plt.legend()
+        fig = plt.gcf()
         plt.show()
-        plt.savefig(config['folderpath'] / 'loss_training.png')
+        fig.savefig(config['folderpath'] / 'loss_training.png')
 
     return
