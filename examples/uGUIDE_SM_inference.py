@@ -12,7 +12,8 @@ theta_train = pd.read_csv('simulations_SM_train_10000__f_Da_ODI_u0_u1.csv', head
 x_train = pd.read_csv(f'simulations_SM_train_10000__S_snr_50.csv', header=None).values
 
 bvals = np.loadtxt('bvals.bval')
-theta_train, x_train = preprocess_data(theta_train, x_train, bvals)
+theta_train, x_train = preprocess_data(theta_train, x_train, bvals,
+                                       normalize=True)
 
 #%%
 prior = {'f': [0.0, 1.0],
@@ -45,7 +46,7 @@ run_inference(theta_train, x_train, config=config,
 #%%
 theta_test = pd.read_csv('simulations_SM_test_1000__f_Da_ODI_u0_u1.csv', header=None).values
 x_test = pd.read_csv(f'simulations_SM_test_1000__S_snr_50.csv', header=None).values
-theta_test, x_test = preprocess_data(theta_test, x_test, bvals)
+theta_test, x_test = preprocess_data(theta_test, x_test, bvals, normalize=True)
 
 #%%
 # Without postprocessing

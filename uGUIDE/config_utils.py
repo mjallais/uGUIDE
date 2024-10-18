@@ -114,7 +114,7 @@ def create_config_uGUIDE(microstructure_model_name,
     
     # Save locations and name files of the neural networks
     if folderpath is None:
-        folderpath = Path.cwd().parent / 'results' / f'uGUIDE_{microstructure_model_name}'
+        folderpath = Path.cwd() / 'results' / f'uGUIDE_{microstructure_model_name}'
     folderpath.mkdir(exist_ok=True, parents=True)
     config['folderpath'] = folderpath
     config['x_normalizer_file'] = x_normalizer_file

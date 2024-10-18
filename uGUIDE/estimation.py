@@ -90,7 +90,7 @@ def estimate_microstructure(x, config, postprocessing=None, voxel_id=0, plot=Tru
               'Unable to fit two Gaussians on the posterior distribution of '
               f'{", ".join(param_fail)}.')
 
-    elif plot == True:
+    if plot == True:
         if postprocessing is None:
             plot_posterior_distribution(samples, config, postprocessing=False,
                                         ground_truth=theta_gt,

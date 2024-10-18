@@ -1,11 +1,11 @@
 import numpy as np
 
-def preprocess_data(theta, x, bvals, summ_stats=False):
+def preprocess_data(theta, x, bvals, normalize=False):
 
     # Check data size
     if x.shape[0] != theta.shape[0]:
         raise ValueError('Number of samples in theta and x do not match.')
-    if summ_stats == False:
+    if normalize == True:
         if x.shape[1] != bvals.shape[0]:
             raise ValueError('x size does not match the number of b-values.')
 
@@ -20,7 +20,7 @@ def preprocess_data(theta, x, bvals, summ_stats=False):
         theta = np.delete(theta, idx_inf[0], 0)
 
     # Normalize signal wrt b0
-    if summ_stats == False:
+    if normalize == True:
         x0 = x[:, bvals == 0].mean(1, keepdims=True)
         x_norm = x / x0
         x = x_norm

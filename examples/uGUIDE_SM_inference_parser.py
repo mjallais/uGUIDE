@@ -33,7 +33,7 @@ if args.inference:
 theta_test = pd.read_csv(args.theta_test, header=None).values
 x_test = pd.read_csv(args.x_test, header=None).values
 bvals = np.loadtxt(args.bvals)
-theta_test, x_test = preprocess_data(theta_test, x_test, bvals)
+theta_test, x_test = preprocess_data(theta_test, x_test, bvals, normalize=True)
 
 if Path.exists(Path.cwd() / 'config.pkl'):
     config = load_config_uGUIDE('config.pkl')
@@ -57,7 +57,8 @@ if args.inference:
     theta_train = pd.read_csv(args.theta_train, header=None).values
     x_train = pd.read_csv(args.x_train, header=None).values
 
-    theta_train, x_train = preprocess_data(theta_train, x_train, bvals)
+    theta_train, x_train = preprocess_data(theta_train, x_train, bvals,
+                                           normalize=True)
 
     run_inference(theta_train, x_train, config=config,
                   plot_loss=False, load_state=False)
