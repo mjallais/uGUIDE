@@ -2,15 +2,24 @@
 
 [Documentation](https://mjallais.github.io/uGUIDE/)
 
-This is the official implementation of ``μGUIDE`` presented in https://arxiv.org/abs/2312.17293. To cite it, please use:
+This is the official implementation of ``μGUIDE`` presented in [eLife](https://elifesciences.org/articles/101069). To cite it, please use:
 ```bibtex
-@misc{jallais2023muguide,
-      title={$\mu$GUIDE: a framework for microstructure imaging via generalized uncertainty-driven inference using deep learning}, 
-      author={Maëliss Jallais and Marco Palombo},
-      year={2023},
-      eprint={2312.17293},
-      archivePrefix={arXiv},
-      primaryClass={eess.IV}
+@article{10.7554/eLife.101069,
+      article_type = {journal},
+      title = {Introducing µGUIDE for quantitative imaging via generalized uncertainty-driven inference using deep learning},
+      author = {Jallais, Maëliss and Palombo, Marco},
+      editor = {Sui, Jing and Walczak, Aleksandra M},
+      volume = 13,
+      year = 2024,
+      month = {nov},
+      pub_date = {2024-11-26},
+      pages = {RP101069},
+      citation = {eLife 2024;13:RP101069},
+      doi = {10.7554/eLife.101069},
+      url = {https://doi.org/10.7554/eLife.101069},
+      journal = {eLife},
+      issn = {2050-084X},
+      publisher = {eLife Sciences Publications, Ltd},
 }
 ```
 
@@ -54,15 +63,24 @@ Visit [``μGUIDE`` documentation](https://mjallais.github.io/uGUIDE/) for more i
 
 If you use ``μGUIDE``, please cite:
 ```bibtex
-@misc{jallais2023muguide,
-      title={$\mu$GUIDE: a framework for microstructure imaging via generalized uncertainty-driven inference using deep learning}, 
-      author={Maëliss Jallais and Marco Palombo},
-      year={2023},
-      eprint={2312.17293},
-      archivePrefix={arXiv},
-      primaryClass={eess.IV}
+@article{10.7554/eLife.101069,
+      article_type = {journal},
+      title = {Introducing µGUIDE for quantitative imaging via generalized uncertainty-driven inference using deep learning},
+      author = {Jallais, Maëliss and Palombo, Marco},
+      editor = {Sui, Jing and Walczak, Aleksandra M},
+      volume = 13,
+      year = 2024,
+      month = {nov},
+      pub_date = {2024-11-26},
+      pages = {RP101069},
+      citation = {eLife 2024;13:RP101069},
+      doi = {10.7554/eLife.101069},
+      url = {https://doi.org/10.7554/eLife.101069},
+      journal = {eLife},
+      issn = {2050-084X},
+      publisher = {eLife Sciences Publications, Ltd},
 }
 ```
 
 ## Further links
-- https://arxiv.org/abs/2312.17293
+- https://elifesciences.org/articles/101069
