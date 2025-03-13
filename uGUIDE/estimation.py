@@ -2,16 +2,16 @@ import numpy as np
 import torch
 import pyro.distributions as dist
 from scipy import optimize
-import traceback
-import matplotlib.pyplot as plt
+# import traceback
+# import matplotlib.pyplot as plt
+from numba import jit
 
-from uGUIDE.normalization import load_normalizer
-from uGUIDE.density_estimator import get_nf
-from uGUIDE.embedded_net import get_embedded_net
 from uGUIDE.plot_utils import plot_posterior_distribution
 
 
-def estimate_microstructure(x, config, postprocessing=None, voxel_id=0, plot=True, theta_gt=None):
+def estimate_microstructure(x, config, nf, embedded_net, x_normalizer,
+                            theta_normalizer, postprocessing=None, voxel_id=0,
+                            plot=True, theta_gt=None):
     """
     Estimate microstructure parameters given an observed diffusion MRI signal.
     The posterior distributions are obtained by sampling from the normalizing 
@@ -71,7 +71,8 @@ def estimate_microstructure(x, config, postprocessing=None, voxel_id=0, plot=Tru
         the posterior distributions (in %).
 
     """
-    samples = sample_posterior_distribution(x, config)
+    samples = sample_posterior_distribution(x, config, nf, embedded_net,
+                                            x_normalizer, theta_normalizer)
     if postprocessing is not None:
         samples = postprocessing(samples, config)
 
@@ -113,9 +114,8 @@ def estimate_microstructure(x, config, postprocessing=None, voxel_id=0, plot=Tru
     return map, mask, degeneracy_mask, uncertainty, ambiguity
 
 
-def sample_posterior_distribution(x, config):
+def sample_posterior_distribution(x, config, nf, embedded_net, x_normalizer, theta_normalizer):
     # Only one observation at a time
-
     if x.ndim == 1:
         x = x.reshape(1,-1)
 
@@ -124,22 +124,7 @@ def sample_posterior_distribution(x, config):
                          'for training')
 
     # Normalize data
-    x_normalizer = load_normalizer(config['folderpath'] / config['x_normalizer_file'])
-    x_norm = x_normalizer(x)
-    x_norm = torch.from_numpy(x_norm).type(torch.float32).to(config['device'])
-
-    nf = get_nf(input_dim=config['size_theta'],
-                nf_features=config['nf_features'],
-                pretrained_state=config['folderpath'] / config['nf_state_dict_file']
-                )
-    nf.to(config['device'])
-    embedded_net = get_embedded_net(input_dim=config['size_x'],
-                                    output_dim=config['nf_features'],
-                                    layer_1_dim=config['hidden_layers'][0],
-                                    layer_2_dim=config['hidden_layers'][1],
-                                    pretrained_state=config['folderpath'] / config['embedder_state_dict_file'],
-                                    use_MLP=config['use_MLP'])
-    embedded_net.to(config['device'])
+    x_norm = torch.tensor(x_normalizer(x), dtype=torch.float32, device=config['device'])
     embedding = embedded_net(x_norm.type(torch.float32).to(config['device']))
 
     # Rejection sampling
@@ -149,25 +134,25 @@ def sample_posterior_distribution(x, config):
     prior_min = np.array([config['prior'][p][0] for p in config['prior'].keys()])
     prior_max = np.array([config['prior'][p][1] for p in config['prior'].keys()])
     samples = np.zeros((nb_to_sample, config['size_theta']))
+
     while (nb_to_sample > 0) & (loop_iter < max_loop_iter):
 
         base_dist = dist.Normal(
-            loc=torch.zeros((nb_to_sample,) + (config['size_theta'],)).to(config['device']),
-            scale=torch.ones((nb_to_sample,) + (config['size_theta'],)).to(config['device'])
+            loc=torch.zeros((nb_to_sample,) + (config['size_theta'],), device=config['device']),
+            scale=torch.ones((nb_to_sample,) + (config['size_theta'],), device=config['device'])
         )
         transformed_dist = dist.ConditionalTransformedDistribution(base_dist, nf)
 
-        samples_norm = transformed_dist.condition(
-                embedding
-            ).sample()
+        with torch.no_grad():
+            samples_norm = transformed_dist.condition(embedding).sample()
+            candidates = theta_normalizer.inverse(samples_norm.detach().cpu().numpy())
 
-        theta_normalizer = load_normalizer(config['folderpath'] / config['theta_normalizer_file'])
-        candidates = theta_normalizer.inverse(samples_norm.detach().cpu().numpy())
-
-        if (loop_iter == 100) & (len(samples) == 0):
-            accepted = np.ones(accepted.shape, dtype=bool)
+        # if loop_iter == 100 and len(samples) == 0:
+        #     accepted = np.ones(accepted.shape, dtype=bool)
+        if loop_iter == 100 and samples.size == 0:
+            accepted = np.ones_like(candidates[:, 0], dtype=bool)
         elif (loop_iter < max_loop_iter):
-            accepted = (candidates > prior_min).all(1) & (candidates < prior_max).all(1)
+            accepted = np.all((candidates > prior_min) & (candidates < prior_max), axis=1)
         else:
             accepted = np.ones(accepted.shape, dtype=bool)
             print(f'Nb good samples: {len(samples)}')
@@ -221,8 +206,8 @@ def estimate_theta(samples, config, postprocessing=False):
                 degeneracy_mask[i] = is_degenerate(param_gauss, prior[param])
                 map[i] = estimate_max_a_posteriori(param_gauss, prior[param])
                 if degeneracy_mask[i] == False: # If degenerate, uncertainty and ambiguity are set to 100%
-                    ambiguity[i] = estimate_ambiguity(param_gauss, prior[param])
-                    uncertainty[i] = estimate_uncertainty(samples[:,i], prior[param])
+                    ambiguity[i] = estimate_ambiguity(param_gauss, tuple(prior[param]))
+                    uncertainty[i] = estimate_uncertainty(samples[:,i], tuple(prior[param]))
 
     return map, mask, degeneracy_mask, uncertainty, ambiguity
 
@@ -269,34 +254,36 @@ def estimate_max_a_posteriori(param_gauss, prior_bounds):
     map = x[y == y.max()]
     return map
     
-
+@jit(nopython=True)
 def estimate_ambiguity(param_gauss, prior_bounds):
     x = np.linspace(prior_bounds[0], prior_bounds[1], 1000)
     y = two_gaussians(x, param_gauss[0], param_gauss[1], param_gauss[2], param_gauss[3], param_gauss[4], param_gauss[5])
-    ambiguity = (len(np.where(y > y.max()/2)[0]) / x.shape[0]) * 100
-    return ambiguity
+    # ambiguity = (len(np.where(y > y.max()/2)[0]) / x.shape[0]) * 100
+    # return ambiguity
+    return (np.count_nonzero(y > y.max() / 2) / x.shape[0]) * 100
 
-
+@jit(nopython=True)
 def estimate_uncertainty(samples, prior_bounds):
     q3, q1 = np.percentile(samples, [75, 25])
     iqr = q3 - q1
-    uncertainty = iqr / (prior_bounds[1] - prior_bounds[0])
-    uncertainty *= 100
-    return uncertainty
+    # uncertainty = iqr / (prior_bounds[1] - prior_bounds[0])
+    # uncertainty *= 100
+    # return uncertainty
+    return (iqr / (prior_bounds[1] - prior_bounds[0])) * 100
 
-
+@jit(nopython=True)
 def one_gaussian(x, f, mu, sigma):
     return f * 1/(sigma*(np.sqrt(2*np.pi))) * np.exp(-1/2 * ((x - mu) / sigma)**2)
 
-
+@jit(nopython=True)
 def two_gaussians(x, f1, mu1, sigma1, f2, mu2, sigma2):
     return one_gaussian(x, f1, mu1, sigma1) + one_gaussian(x, f2, mu2, sigma2)
 
-
+@jit(nopython=True)
 def derivative_one_gaussian(x, f, mu, sigma):
     return - (x - mu)/sigma**2 * one_gaussian(x, f, mu, sigma)
 
-
+@jit(nopython=True)
 def derivative_two_gaussians(x, f1, mu1, sigma1, f2, mu2, sigma2):
     return derivative_one_gaussian(x, f1, mu1, sigma1) + derivative_one_gaussian(x, f2, mu2, sigma2)
 
@@ -310,13 +297,13 @@ def sign_der(derivative):
             s[i] = s[i-1]
     return s
 
-
 def get_hist(samples):
     hist, bin_edges = np.histogram(samples, density=True, bins=100)
-    n = len(hist)
-    x_hist=np.zeros((n),dtype=float) 
-    for ii in range(n):
-        x_hist[ii]=(bin_edges[ii+1]+bin_edges[ii])/2
+    # n = len(hist)
+    # x_hist=np.zeros((n),dtype=float) 
+    # for ii in range(n):
+    #     x_hist[ii]=(bin_edges[ii+1]+bin_edges[ii])/2
+    x_hist = (bin_edges[:-1] + bin_edges[1:]) / 2  # Midpoints of bins
     return x_hist, hist
 
 
@@ -325,7 +312,8 @@ def fit_two_gaussians(x_hist, hist):
     max_hist = x_hist[-1]
     try:
         param_gauss, _ = optimize.curve_fit(two_gaussians, x_hist, hist,
-                                            bounds=([0.0, min_hist, 0.0, 0.0, min_hist, 0.0], [10, max_hist, max_hist, 10, max_hist, max_hist]))
+                                            bounds=([0.0, min_hist, 0.0, 0.0, min_hist, 0.0], [10, max_hist, max_hist, 10, max_hist, max_hist]),
+        )
     except Exception:
         param_gauss = np.zeros(6)
         # print(traceback.format_exc())
