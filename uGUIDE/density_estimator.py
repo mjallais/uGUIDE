@@ -15,7 +15,7 @@ def build_nf(input_dim, nf_features=32):
             sigmoid_bias=2.0,
             stable=False,
         )
-    transforms.append(transform)
+        transforms.append(transform)
 
     nf = T.ComposeTransformModule(parts=transforms)
 
