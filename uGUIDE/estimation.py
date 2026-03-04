@@ -11,7 +11,12 @@ from uGUIDE.embedded_net import get_embedded_net
 from uGUIDE.plot_utils import plot_posterior_distribution
 
 
-def estimate_microstructure(x, config, postprocessing=None, voxel_id=0, plot=True, theta_gt=None):
+def estimate_microstructure(x,
+                            config,
+                            postprocessing=None,
+                            voxel_id=0,
+                            plot=True,
+                            theta_gt=None):
     """
     Estimate microstructure parameters given an observed diffusion MRI signal.
     The posterior distributions are obtained by sampling from the normalizing 
@@ -75,15 +80,15 @@ def estimate_microstructure(x, config, postprocessing=None, voxel_id=0, plot=Tru
     if postprocessing is not None:
         samples = postprocessing(samples, config)
 
-    map, mask, degeneracy_mask, uncertainty, ambiguity = estimate_theta(samples,
-                                                                        config,
-                                                                        postprocessing=postprocessing is not None)
+    map, mask, degeneracy_mask, uncertainty, ambiguity = estimate_theta(
+        samples, config, postprocessing=postprocessing is not None)
     folderpath = config['folderpath'] / 'posterior_distributions'
     folderpath.mkdir(exist_ok=True, parents=True)
 
-    if mask.all() == False: # If at least one is False
+    if mask.all() == False:  # If at least one is False
         if postprocessing is not None:
-            param_fail = np.array(list(config["prior_postprocessing"].keys()))[mask == False]
+            param_fail = np.array(list(
+                config["prior_postprocessing"].keys()))[mask == False]
         else:
             param_fail = np.array(list(config["prior"].keys()))[mask == False]
         print(f'Microstructure estimation of voxel {voxel_id} did not work. '\
@@ -92,19 +97,29 @@ def estimate_microstructure(x, config, postprocessing=None, voxel_id=0, plot=Tru
 
     if plot == True:
         if postprocessing is None:
-            plot_posterior_distribution(samples, config, postprocessing=False,
-                                        ground_truth=theta_gt,
-                                        fig_file=f'posterior_distributions/posterior_distribution_voxel_{voxel_id}.png')
+            plot_posterior_distribution(
+                samples,
+                config,
+                postprocessing=False,
+                ground_truth=theta_gt,
+                fig_file=
+                f'posterior_distributions/posterior_distribution_voxel_{voxel_id}.png'
+            )
             print(f'Parameters: {list(config["prior"].keys())}')
         else:
-            plot_posterior_distribution(samples, config, postprocessing=True,
-                                        ground_truth=theta_gt,
-                                        fig_file=f'posterior_distributions/posterior_distribution_voxel_{voxel_id}_postprocessing.png')
+            plot_posterior_distribution(
+                samples,
+                config,
+                postprocessing=True,
+                ground_truth=theta_gt,
+                fig_file=
+                f'posterior_distributions/posterior_distribution_voxel_{voxel_id}_postprocessing.png'
+            )
             print(f'Parameters: {list(config["prior_postprocessing"].keys())}')
-        
+
         if theta_gt is not None:
             print(f'Ground truth theta = {theta_gt}')
-        
+
         print(f'Estimated theta = {map}')
         print(f'Degeneracies = {degeneracy_mask}')
         print(f'Uncertainties = {uncertainty} %')
@@ -117,27 +132,29 @@ def sample_posterior_distribution(x, config):
     # Only one observation at a time
 
     if x.ndim == 1:
-        x = x.reshape(1,-1)
+        x = x.reshape(1, -1)
 
     if config['size_x'] != x.shape[1]:
         raise ValueError('x size set in config does not match x size used ' \
                          'for training')
 
     # Normalize data
-    x_normalizer = load_normalizer(config['folderpath'] / config['x_normalizer_file'])
+    x_normalizer = load_normalizer(config['folderpath'] /
+                                   config['x_normalizer_file'])
     x_norm = x_normalizer(x)
     x_norm = torch.from_numpy(x_norm).type(torch.float32).to(config['device'])
 
     nf = get_nf(input_dim=config['size_theta'],
                 nf_features=config['nf_features'],
-                pretrained_state=config['folderpath'] / config['nf_state_dict_file']
-                )
+                pretrained_state=config['folderpath'] /
+                config['nf_state_dict_file'])
     nf.to(config['device'])
     embedded_net = get_embedded_net(input_dim=config['size_x'],
                                     output_dim=config['nf_features'],
                                     layer_1_dim=config['hidden_layers'][0],
                                     layer_2_dim=config['hidden_layers'][1],
-                                    pretrained_state=config['folderpath'] / config['embedder_state_dict_file'],
+                                    pretrained_state=config['folderpath'] /
+                                    config['embedder_state_dict_file'],
                                     use_MLP=config['use_MLP'])
     embedded_net.to(config['device'])
     embedding = embedded_net(x_norm.type(torch.float32).to(config['device']))
@@ -146,33 +163,38 @@ def sample_posterior_distribution(x, config):
     nb_to_sample = config['nb_samples']
     loop_iter = 0
     max_loop_iter = 5000
-    prior_min = np.array([config['prior'][p][0] for p in config['prior'].keys()])
-    prior_max = np.array([config['prior'][p][1] for p in config['prior'].keys()])
+    prior_min = np.array(
+        [config['prior'][p][0] for p in config['prior'].keys()])
+    prior_max = np.array(
+        [config['prior'][p][1] for p in config['prior'].keys()])
     samples = np.zeros((nb_to_sample, config['size_theta']))
     while (nb_to_sample > 0) & (loop_iter < max_loop_iter):
 
         base_dist = dist.Normal(
-            loc=torch.zeros((nb_to_sample,) + (config['size_theta'],)).to(config['device']),
-            scale=torch.ones((nb_to_sample,) + (config['size_theta'],)).to(config['device'])
-        )
-        transformed_dist = dist.ConditionalTransformedDistribution(base_dist, nf)
+            loc=torch.zeros((nb_to_sample, ) + (config['size_theta'], )).to(
+                config['device']),
+            scale=torch.ones((nb_to_sample, ) + (config['size_theta'], )).to(
+                config['device']))
+        transformed_dist = dist.ConditionalTransformedDistribution(
+            base_dist, nf)
 
-        samples_norm = transformed_dist.condition(
-                embedding
-            ).sample()
+        samples_norm = transformed_dist.condition(embedding).sample()
 
-        theta_normalizer = load_normalizer(config['folderpath'] / config['theta_normalizer_file'])
-        candidates = theta_normalizer.inverse(samples_norm.detach().cpu().numpy())
+        theta_normalizer = load_normalizer(config['folderpath'] /
+                                           config['theta_normalizer_file'])
+        candidates = theta_normalizer.inverse(
+            samples_norm.detach().cpu().numpy())
 
         if (loop_iter == 100) & (len(samples) == 0):
             accepted = np.ones(accepted.shape, dtype=bool)
         elif (loop_iter < max_loop_iter):
-            accepted = (candidates > prior_min).all(1) & (candidates < prior_max).all(1)
+            accepted = (candidates > prior_min).all(1) & (candidates
+                                                          < prior_max).all(1)
         else:
             accepted = np.ones(accepted.shape, dtype=bool)
             print(f'Nb good samples: {len(samples)}')
 
-        if nb_to_sample == config['nb_samples']: # first iteration
+        if nb_to_sample == config['nb_samples']:  # first iteration
             samples = candidates[accepted]
         else:
             samples = np.append(samples, candidates[accepted], axis=0)
@@ -188,10 +210,12 @@ def estimate_theta(samples, config, postprocessing=False):
 
     # Check if samples have the save size as size_theta in config
     if (postprocessing == False) & (config['size_theta'] != samples.shape[1]):
-            raise ValueError('Theta size set in config does not match theta ' \
-                            'size used for training')
-    elif (postprocessing == True) & (len(config['prior_postprocessing']) != samples.shape[1]):
-            raise ValueError('Theta size does not match theta size of postprocessing.')
+        raise ValueError('Theta size set in config does not match theta ' \
+                        'size used for training')
+    elif (postprocessing == True) & (len(config['prior_postprocessing'])
+                                     != samples.shape[1]):
+        raise ValueError(
+            'Theta size does not match theta size of postprocessing.')
 
     if postprocessing == True:
         prior = config['prior_postprocessing']
@@ -208,21 +232,26 @@ def estimate_theta(samples, config, postprocessing=False):
 
     for i, param in enumerate(prior.keys()):
         if (theta_mean[i] < prior[param][0]) \
-            or (theta_mean[i] > prior[param][1]):
+            or (theta_mean[i] > prior[param][1]) \
+            or np.isnan(theta_mean[i]) or np.isinf(theta_mean[i]):
             mask[i] = False
         else:
             # Only compute degeneracy for non-masked/valid voxel estimations
-            x_hist, hist = get_hist(samples[:,i])
+            x_hist, hist = get_hist(samples[:, i])
             param_gauss = fit_two_gaussians(x_hist, hist)
             # If the gaussian fitting did not work, set this voxel's parameter as invalid
             if np.all(param_gauss == 0):
                 mask[i] = False
             else:
                 degeneracy_mask[i] = is_degenerate(param_gauss, prior[param])
-                map[i] = estimate_max_a_posteriori(param_gauss, prior[param])
-                if degeneracy_mask[i] == False: # If degenerate, uncertainty and ambiguity are set to 100%
-                    ambiguity[i] = estimate_ambiguity(param_gauss, prior[param])
-                    uncertainty[i] = estimate_uncertainty(samples[:,i], prior[param])
+                # map[i] = estimate_max_a_posteriori(param_gauss, prior[param])
+                map[i] = map_estimate_hist(samples[:, i], bins=1000)
+                if degeneracy_mask[
+                        i] == False:  # If degenerate, uncertainty and ambiguity are set to 100%
+                    ambiguity[i] = estimate_ambiguity(param_gauss,
+                                                      prior[param])
+                    uncertainty[i] = estimate_uncertainty(
+                        samples[:, i], prior[param])
 
     return map, mask, degeneracy_mask, uncertainty, ambiguity
 
@@ -231,9 +260,17 @@ def is_degenerate(param_gauss, prior_bounds):
     degenerate = False
 
     x = np.linspace(prior_bounds[0], prior_bounds[1], 1000)
-    der = derivative_two_gaussians(x, param_gauss[0], param_gauss[1], param_gauss[2], param_gauss[3], param_gauss[4], param_gauss[5])
+    der = derivative_two_gaussians(x, param_gauss[0], param_gauss[1],
+                                   param_gauss[2], param_gauss[3],
+                                   param_gauss[4], param_gauss[5])
 
-    sign_d = sign_der(der)
+    try:
+        sign_d = sign_der(der)
+    except Exception:
+        print('Error in sign derivative computation.')
+        print(traceback.format_exc())
+        print(f'der={der}')
+        return degenerate
     idx_der = np.where(sign_d[:-1] != sign_d[1:])[0] + 1
 
     # If idx_der contain two consecutive numbers, means it is a suprious spike.
@@ -243,11 +280,12 @@ def is_degenerate(param_gauss, prior_bounds):
         for i_d, d in enumerate(idx_der):
             before = False
             after = False
-            if i_d != 0: # if not first one
-                if d - 1 == idx_der[i_d-1]: # consecutive with the one before
+            if i_d != 0:  # if not first one
+                if d - 1 == idx_der[i_d -
+                                    1]:  # consecutive with the one before
                     before = True
-            if i_d != len(idx_der) - 1: # not the last one  
-                if d + 1 == idx_der[i_d+1]: # consecutive with the one after
+            if i_d != len(idx_der) - 1:  # not the last one
+                if d + 1 == idx_der[i_d + 1]:  # consecutive with the one after
                     after = True
             if after == False and before == False:
                 der_to_keep.append(d)
@@ -265,15 +303,24 @@ def is_degenerate(param_gauss, prior_bounds):
 
 def estimate_max_a_posteriori(param_gauss, prior_bounds):
     x = np.linspace(prior_bounds[0], prior_bounds[1], 1000)
-    y = two_gaussians(x, param_gauss[0], param_gauss[1], param_gauss[2], param_gauss[3], param_gauss[4], param_gauss[5])
+    y = two_gaussians(x, param_gauss[0], param_gauss[1], param_gauss[2],
+                      param_gauss[3], param_gauss[4], param_gauss[5])
     map = x[y == y.max()]
     return map
-    
+
+
+def map_estimate_hist(samples, bins=1000):
+    hist, bin_edges = np.histogram(samples, bins=bins, density=True)
+    max_bin_idx = np.argmax(hist)
+    map_estimate = (bin_edges[max_bin_idx] + bin_edges[max_bin_idx + 1]) / 2
+    return map_estimate
+
 
 def estimate_ambiguity(param_gauss, prior_bounds):
     x = np.linspace(prior_bounds[0], prior_bounds[1], 1000)
-    y = two_gaussians(x, param_gauss[0], param_gauss[1], param_gauss[2], param_gauss[3], param_gauss[4], param_gauss[5])
-    ambiguity = (len(np.where(y > y.max()/2)[0]) / x.shape[0]) * 100
+    y = two_gaussians(x, param_gauss[0], param_gauss[1], param_gauss[2],
+                      param_gauss[3], param_gauss[4], param_gauss[5])
+    ambiguity = (len(np.where(y > y.max() / 2)[0]) / x.shape[0]) * 100
     return ambiguity
 
 
@@ -286,7 +333,9 @@ def estimate_uncertainty(samples, prior_bounds):
 
 
 def one_gaussian(x, f, mu, sigma):
-    return f * 1/(sigma*(np.sqrt(2*np.pi))) * np.exp(-1/2 * ((x - mu) / sigma)**2)
+    return f * 1 / (sigma *
+                    (np.sqrt(2 * np.pi))) * np.exp(-1 / 2 *
+                                                   ((x - mu) / sigma)**2)
 
 
 def two_gaussians(x, f1, mu1, sigma1, f2, mu2, sigma2):
@@ -294,11 +343,12 @@ def two_gaussians(x, f1, mu1, sigma1, f2, mu2, sigma2):
 
 
 def derivative_one_gaussian(x, f, mu, sigma):
-    return - (x - mu)/sigma**2 * one_gaussian(x, f, mu, sigma)
+    return -(x - mu) / sigma**2 * one_gaussian(x, f, mu, sigma)
 
 
 def derivative_two_gaussians(x, f1, mu1, sigma1, f2, mu2, sigma2):
-    return derivative_one_gaussian(x, f1, mu1, sigma1) + derivative_one_gaussian(x, f2, mu2, sigma2)
+    return derivative_one_gaussian(
+        x, f1, mu1, sigma1) + derivative_one_gaussian(x, f2, mu2, sigma2)
 
 
 def sign_der(derivative):
@@ -307,16 +357,16 @@ def sign_der(derivative):
         s[0] = s[s != 0][0]
     for i in np.arange(1, s.shape[0]):
         if s[i] == 0:
-            s[i] = s[i-1]
+            s[i] = s[i - 1]
     return s
 
 
 def get_hist(samples):
     hist, bin_edges = np.histogram(samples, density=True, bins=100)
     n = len(hist)
-    x_hist=np.zeros((n),dtype=float) 
+    x_hist = np.zeros((n), dtype=float)
     for ii in range(n):
-        x_hist[ii]=(bin_edges[ii+1]+bin_edges[ii])/2
+        x_hist[ii] = (bin_edges[ii + 1] + bin_edges[ii]) / 2
     return x_hist, hist
 
 
@@ -324,8 +374,12 @@ def fit_two_gaussians(x_hist, hist):
     min_hist = x_hist[0]
     max_hist = x_hist[-1]
     try:
-        param_gauss, _ = optimize.curve_fit(two_gaussians, x_hist, hist,
-                                            bounds=([0.0, min_hist, 0.0, 0.0, min_hist, 0.0], [10, max_hist, max_hist, 10, max_hist, max_hist]))
+        param_gauss, _ = optimize.curve_fit(
+            two_gaussians,
+            x_hist,
+            hist,
+            bounds=([0.0, min_hist, 0.0, 0.0, min_hist,
+                     0.0], [10, max_hist, max_hist, 10, max_hist, max_hist]))
     except Exception:
         param_gauss = np.zeros(6)
         # print(traceback.format_exc())

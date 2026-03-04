@@ -149,8 +149,10 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
         pbar.update()
     pbar.close()
     print(f'Inference done. Convergence reached after {epoch} epochs.')
+    print(f'Best validation loss: {best_val_loss}')
 
     if plot_loss:
+        plt.figure()
         plt.plot(val_losses, label="- Forward KL")
         plt.xlabel("Steps")
         plt.ylabel("Loss")
@@ -160,4 +162,4 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
         plt.show()
         fig.savefig(config['folderpath'] / 'loss_training.png')
 
-    return
+    return best_val_loss
