@@ -98,8 +98,18 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
     optimizer = torch.optim.Adam(modules.parameters(),
                                  lr=config['learning_rate'])
 
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode='min',
+        factor=0.5,
+        patience=config['scheduler_patience'],
+        min_lr=1e-5,
+        verbose=True,
+    )
+
     best_val_loss = np.inf
     val_losses = []
+    lr_history = []
     epoch = 0
     epochs_no_change = 0
 
@@ -109,12 +119,26 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
 
         modules.train()
         for theta_batch, x_batch in train_dataloader:
+            if torch.isnan(theta_batch).any() or torch.isinf(
+                    theta_batch).any():
+                print('NaN or inf values found in theta batch')
+                break
+            if torch.isnan(x_batch).any() or torch.isinf(x_batch).any():
+                print('NaN or inf values found in x batch')
+                break
+
             optimizer.zero_grad()
             embedding = embedded_net(x_batch.detach().type(torch.float32).to(
                 config['device']))
+            embedding = torch.tanh(embedding)
             lp_theta = transformed_dist.condition(embedding).log_prob(
                 theta_batch.detach().type(torch.float32).to(config['device']))
             loss = -lp_theta.mean()
+
+            if not torch.isfinite(loss):
+                print("Skipping batch (NaN loss)")
+                continue
+
             loss.backward()
             torch.nn.utils.clip_grad_norm_(modules.parameters(), max_norm=1.0)
 
@@ -134,6 +158,19 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
                 loss_acc.append(loss.item())
 
             new_val_loss = float(np.mean(loss_acc))
+
+            # Step the scheduler and check if learning rate was reduced
+            old_lr = optimizer.param_groups[0]['lr']
+            lr_history.append(old_lr)
+            scheduler.step(new_val_loss)
+            new_lr = optimizer.param_groups[0]['lr']
+
+            # Reset counter if learning rate was reduced
+            if new_lr < old_lr:
+                print(f"LR reduced: {old_lr:.2e} → {new_lr:.2e}")
+                epochs_no_change = 0
+
+            # Early stopping and save best model
             if new_val_loss < best_val_loss:
                 best_val_loss = new_val_loss
                 epochs_no_change = 0
@@ -153,13 +190,27 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
     print(f'Inference done. Convergence reached after {epoch} epochs.')
 
     if plot_loss:
-        plt.plot(val_losses, label="- Forward KL")
-        plt.xlabel("Steps")
-        plt.ylabel("Loss")
-        plt.yscale("symlog")
-        plt.legend()
-        fig = plt.gcf()
-        plt.show()
+        fig, ax1 = plt.subplots()
+
+        # Loss (left axis)
+        ax1.plot(val_losses, label="Validation Loss")
+        ax1.set_xlabel("Epoch")
+        ax1.set_ylabel("Loss")
+        ax1.set_yscale("symlog")
+
+        # LR (right axis)
+        ax2 = ax1.twinx()
+        ax2.plot(lr_history, linestyle='--', label="Learning Rate")
+        ax2.set_ylabel("Learning Rate")
+        ax2.set_yscale("log")
+
+        # Legend
+        lines, labels = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines + lines2, labels + labels2)
+
+        plt.title("LR vs Loss during training")
+
         fig.savefig(config['folderpath'] / 'loss_training.png')
 
     return
