@@ -11,6 +11,7 @@ from uGUIDE.density_estimator import get_nf
 from uGUIDE.embedded_net import get_embedded_net
 from uGUIDE.normalization import get_normalizer, save_normalizer
 
+
 def run_inference(theta, x, config, plot_loss=True, load_state=False):
     """
     Run inference given a training dataset.
@@ -35,7 +36,7 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
         Otherwise, start a new inference.
 
     """
-    
+
     # check if size(x) is compatible with size within config file
     if config['size_theta'] != theta.shape[1]:
         raise ValueError('Theta size set in config does not match theta size ' \
@@ -48,13 +49,15 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
 
     # Normalize the data
     theta_normalizer = get_normalizer(theta)
-    save_normalizer(theta_normalizer, config['folderpath'] / config['theta_normalizer_file'])
+    save_normalizer(theta_normalizer,
+                    config['folderpath'] / config['theta_normalizer_file'])
     x_normalizer = get_normalizer(x)
-    save_normalizer(x_normalizer, config['folderpath'] / config['x_normalizer_file'])
+    save_normalizer(x_normalizer,
+                    config['folderpath'] / config['x_normalizer_file'])
 
     theta_norm = theta_normalizer(theta)
     x_norm = x_normalizer(x)
-    
+
     # Split training/validation sets
     train_dataset, val_dataset = split_data(theta_norm, x_norm)
     train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True)
@@ -64,19 +67,19 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
     if load_state == True:
         nf = get_nf(input_dim=config['size_theta'],
                     nf_features=config['nf_features'],
-                    pretrained_state=config['folderpath'] / config['nf_state_dict_file']
-                    )
+                    pretrained_state=config['folderpath'] /
+                    config['nf_state_dict_file'])
         embedded_net = get_embedded_net(input_dim=config['size_x'],
                                         output_dim=config['nf_features'],
                                         layer_1_dim=config['hidden_layers'][0],
                                         layer_2_dim=config['hidden_layers'][1],
-                                        pretrained_state=config['folderpath'] / config['embedder_state_dict_file'],
+                                        pretrained_state=config['folderpath'] /
+                                        config['embedder_state_dict_file'],
                                         use_MLP=config['use_MLP'])
     else:
         nf = get_nf(input_dim=config['size_theta'],
                     nf_features=config['nf_features'],
-                    pretrained_state=None
-                    )
+                    pretrained_state=None)
         embedded_net = get_embedded_net(input_dim=config['size_x'],
                                         output_dim=config['nf_features'],
                                         layer_1_dim=config['hidden_layers'][0],
@@ -88,31 +91,32 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
 
     base_dist = dist.Normal(
         loc=torch.zeros(config['size_theta']).to(config['device']),
-        scale=torch.ones(config['size_theta']).to(config['device'])
-    )
+        scale=torch.ones(config['size_theta']).to(config['device']))
     transformed_dist = dist.ConditionalTransformedDistribution(base_dist, nf)
 
     modules = torch.nn.ModuleList([nf, embedded_net])
-    optimizer = torch.optim.Adam(modules.parameters(), lr=config['learning_rate'])
+    optimizer = torch.optim.Adam(modules.parameters(),
+                                 lr=config['learning_rate'])
 
     best_val_loss = np.inf
     val_losses = []
     epoch = 0
     epochs_no_change = 0
 
-    pbar = tqdm(desc='Run inference', total = config['max_epochs'])
+    pbar = tqdm(desc='Run inference', total=config['max_epochs'])
     while epoch < config['max_epochs'] \
         and epochs_no_change < config['n_epochs_no_change']:
-        
+
         modules.train()
         for theta_batch, x_batch in train_dataloader:
             optimizer.zero_grad()
-            embedding = embedded_net(x_batch.detach().type(torch.float32).to(config['device']))
+            embedding = embedded_net(x_batch.detach().type(torch.float32).to(
+                config['device']))
             lp_theta = transformed_dist.condition(embedding).log_prob(
-                theta_batch.detach().type(torch.float32).to(config['device'])
-            )
+                theta_batch.detach().type(torch.float32).to(config['device']))
             loss = -lp_theta.mean()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(modules.parameters(), max_norm=1.0)
 
             optimizer.step()
             transformed_dist.clear_cache()
@@ -121,25 +125,23 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
         with torch.no_grad():
             loss_acc = []
             for theta_batch, x_batch in val_dataloader:
-                embedding = embedded_net(x_batch.detach().type(torch.float32).to(config['device']))
+                embedding = embedded_net(x_batch.detach().type(
+                    torch.float32).to(config['device']))
                 lp_theta = transformed_dist.condition(embedding).log_prob(
-                    theta_batch.detach().type(torch.float32).to(config['device'])
-                )
+                    theta_batch.detach().type(torch.float32).to(
+                        config['device']))
                 loss = -lp_theta.mean()
-                loss_acc.append(loss.detach().cpu().numpy())
+                loss_acc.append(loss.item())
 
-            new_val_loss = np.mean(loss_acc)
+            new_val_loss = float(np.mean(loss_acc))
             if new_val_loss < best_val_loss:
                 best_val_loss = new_val_loss
                 epochs_no_change = 0
                 torch.save(
                     embedded_net.state_dict(),
-                    config['folderpath'] / config['embedder_state_dict_file']
-                )
-                torch.save(
-                    nf.state_dict(), 
-                    config['folderpath'] / config['nf_state_dict_file']
-                )
+                    config['folderpath'] / config['embedder_state_dict_file'])
+                torch.save(nf.state_dict(),
+                           config['folderpath'] / config['nf_state_dict_file'])
             else:
                 epochs_no_change += 1
 

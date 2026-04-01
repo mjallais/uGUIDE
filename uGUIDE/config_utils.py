@@ -17,13 +17,17 @@ def create_config_uGUIDE(microstructure_model_name,
                          device=None,
                          use_MLP=True,
                          nf_features=32,
-                         hidden_layers=[128,64],
-                         learning_rate=1e-3,
+                         hidden_layers=[128, 64],
+                         flow_type='MAF',
+                         n_flows=5,
+                         learning_rate=1e-4,
+                         scheduler_patience=10,
+                         learning_rate_min=1e-5,
                          max_epochs=500,
-                         n_epochs_no_change=10,
+                         n_epochs_no_change=25,
+                         voxel_batch_size=100,
                          random_seed=None,
-                         nb_samples=50_000
-                         ):
+                         nb_samples=10_000):
     """
     Create a configuration file for the inference and microstructure parameters
     estimation.
@@ -84,21 +88,40 @@ def create_config_uGUIDE(microstructure_model_name,
             Number of hidden units per layer for the MLP, used for the features
             extraction.
 
-    learning_rate : float, default=1e-3
+    n_flows : int, default=5
+            Number of flows for the normalizing flow.
+
+    flow_type : str, default='MAF'
+            Type of normalizing flow to use. Options are 'MAF' (Masked 
+            Autoencoder Flow) or 'NSF' (Neural Spline Flow).
+
+    learning_rate : float, default=1e-4
             Learning rate for the Adam optimizer.
+
+    scheduler_patience : int, default=10
+            Number of epochs with no improvement after which the learning rate
+            will be reduced by a factor of 0.1.
+
+    learning_rate_min : float, default=1e-5
+            Minimum learning rate for the scheduler. The learning rate will not
+            be reduced below this value.
 
     max_epochs : int, default=500
             Maximum number of epochs for the inference.
     
-    n_epochs_no_change : int, default=10
+    n_epochs_no_change : int, default=25
             Number of epochs to wait for improvement on the validation set
-            before stopping training.
+            before stopping training. Good to set it around 2-3 times the 
+            scheduler_patience.
+
+    voxel_batch_size : int, default=20
+            Number of voxels to process in parallel during the inference.
 
     random_seed : int, optional
             Determines random number generation. Pass an int for reproducible
             results.
     
-    nb_samples : int, default=50_000
+    nb_samples : int, default=10_000
             Number of samples drawn from the posterior distribution.
 
     Returns
@@ -111,10 +134,11 @@ def create_config_uGUIDE(microstructure_model_name,
 
     # Set model name
     config['microstructure_model_name'] = microstructure_model_name
-    
+
     # Save locations and name files of the neural networks
     if folderpath is None:
-        folderpath = Path.cwd() / 'results' / f'uGUIDE_{microstructure_model_name}'
+        folderpath = Path.cwd(
+        ) / 'results' / f'uGUIDE_{microstructure_model_name}'
     folderpath.mkdir(exist_ok=True, parents=True)
     config['folderpath'] = folderpath
     config['x_normalizer_file'] = x_normalizer_file
@@ -157,10 +181,29 @@ def create_config_uGUIDE(microstructure_model_name,
         config['nf_features'] = nf_features
     else:
         config['nf_features'] = config['size_x']
-    config['learning_rate'] = learning_rate
-    config['max_epochs'] = max_epochs
-    config['n_epochs_no_change'] = n_epochs_no_change
     config['hidden_layers'] = hidden_layers
+    config['flow_type'] = flow_type
+    config['n_flows'] = n_flows
+    config['learning_rate'] = learning_rate
+    config['scheduler_patience'] = scheduler_patience
+    config['learning_rate_min'] = learning_rate_min
+    config['max_epochs'] = max_epochs
+    if scheduler_patience >= max_epochs:
+        print('Warning: scheduler_patience is greater than or equal to '
+              'max_epochs. The learning rate will not be reduced during '
+              'training.')
+    if n_epochs_no_change >= max_epochs:
+        print('Warning: n_epochs_no_change is greater than or equal to '
+              'max_epochs. Early stopping will not be applied during '
+              'training.')
+    if scheduler_patience >= n_epochs_no_change:
+        print('Warning: scheduler_patience is greater than or equal to '
+              'n_epochs_no_change. The learning rate will not be reduced '
+              'during training, even if there is no improvement on the '
+              'validation set. Suggested to set scheduler_patience <= '
+              'n_epochs_no_change * 2 + 5.')
+    config['n_epochs_no_change'] = n_epochs_no_change
+    config['voxel_batch_size'] = voxel_batch_size
     if random_seed is None:
         random_seed = random.randint(0, 10_000)
     config['random_seed'] = random_seed
@@ -192,7 +235,7 @@ def save_config_uGUIDE(config, savefile='config.pkl', folderpath=None):
     with open(folderpath / savefile, 'wb') as f:
         pickle.dump(config, f)
         print(f'uGUIDE config successfully saved to {folderpath / savefile}')
-    
+
     return
 
 
@@ -215,5 +258,5 @@ def load_config_uGUIDE(savefile):
     with open(savefile, 'rb') as f:
         config = pickle.load(f)
         print('uGUIDE config successfully loaded.')
-    
+
     return config

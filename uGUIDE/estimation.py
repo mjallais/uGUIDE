@@ -1,33 +1,46 @@
 import traceback
+from typing import Tuple, Optional, Dict
+
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import pyro.distributions as dist
 from scipy import optimize
-# import traceback
-import matplotlib.pyplot as plt
-from numba import jit
-import torch.nn.functional as F
-from scipy.signal import find_peaks
-import torch.nn as nn
-
+from time import time
 
 from uGUIDE.plot_utils import plot_posterior_distribution
+from uGUIDE.density_estimator import get_nf
+from uGUIDE.embedded_net import get_embedded_net
+from uGUIDE.normalization import load_normalizer
+
+# import matplotlib.pyplot as plt
+# import torch.nn.functional as F
 
 
-def estimate_microstructure(x, config, nf, embedded_net, x_normalizer,
-                            theta_normalizer, postprocessing=None, voxel_id=0,
-                            plot=True, theta_gt=None):
+def estimate_microstructure(
+    x: torch.Tensor,
+    config: Dict,
+    postprocessing=None,
+    verbose: bool = False,
+    plot: bool = False,
+    plot_max_voxels: int = 5,
+    plot_random: bool = True,
+    theta_gt: Optional[torch.Tensor] = None,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor,
+           torch.Tensor]:
     """
-    Estimate microstructure parameters given an observed diffusion MRI signal.
+    Estimate microstructure parameters given observed diffusion MRI signals.
     The posterior distributions are obtained by sampling from the normalizing 
     flow. If a problem occurs, mask is set to False for the corresponding 
-    parameter(s). Then the posterior distribution is defined as degenerate or not.
-    Finally this function extracts and returns the maximum-a-posteriori, the
-    uncertainty and the ambiguity from the estimated posterior distributions.
+    parameter(s). Then the posterior distribution is defined as degenerate or
+    not. Finally this function extracts and returns the maximum-a-posteriori, 
+    the uncertainty and the ambiguity from the estimated posterior
+    distributions for each voxel.
 
     Parameters
     ----------
-    x : array, shape (x_size,)
+    x : torch.Tensor, shape (N_voxels, config['size_x'])
         Observed diffusion MRI signal. Its size must be identical to the signals
         used for training (i.e. ``config['size_x']``)
     
@@ -40,292 +53,586 @@ def estimate_microstructure(x, config, nf, embedded_net, x_normalizer,
         instead during training. This function allows to convert those surrogate
         parameters into the model microstructure parameters. If set to None, no
         conversion is performed.
-    
-    voxel_id : int, default=0
-        ID of the current voxel. Used to set the name when saving the posterior
-        distribution plots.
+
+    verbose : bool, default=False
+        Whether to print messages about the estimation process, especially 
+        invalid cases where the estimation did not work.
     
     plot : bool, default=True
         Whether to save the posterior distributions.
+
+    plot_max_voxels : int, default=5
+        Maximum number of voxels to plot the posterior distributions for. If the
+        number of voxels to estimate is higher than this number, only a random
+        subset of voxels will be plotted if plot_random is set to True. If
+        plot_random is set to False, the first plot_max_voxels will be plotted.
     
-    theta_gt : ndarray, optional
+    plot_random : bool, default=True
+        Whether to randomly select the voxels to plot the posterior distributions
+        for when the number of voxels to estimate is higher than plot_max_voxels.
+    
+    theta_gt : torch.Tensor, optional
         Ground truth value corresponding to the observed signal x, whith size 
         (config['size_theta'],). Used when testing on simulations. Adds a
         vertical dashed black line on the plotted posterior distributions.
 
     Returns
     -------
-    map : ndarray, shape (config['size_theta'],)
+    map : torch.Tensor, shape (N, size_theta)
         Maximum-a-posteriori estimated for each microstructure parameter from
         the posterior distributions.
     
-    mask : ndarray, shape (config['size_theta'],)
+    mask : torch.Tensor, shape (N, size_theta)
         Default to ``True``. Set to False if a parameter estimation did not
         work.
 
-    degeneracy_mask : ndarray, shape (config['size_theta'],)
+    degeneracy_mask : torch.Tensor, shape (N, size_theta)
         Set to ``True`` if a posterior distribution is defined as degenerate.
         ``False`` otherwise.
 
-    uncertainty : ndarray, shape (config['size_theta'],)
+    uncertainty : torch.Tensor, shape (N, size_theta)
         Uncertainty measure estimated for each microstructure parameter from
         the posterior distributions (in %).
 
-    ambiguity : ndarray, shape (config['size_theta'],)
+    ambiguity : torch.Tensor, shape (N, size_theta)
         Ambiguity measure estimated for each microstructure parameter from
         the posterior distributions (in %).
 
     """
-    print(f'Voxel {voxel_id}')
-    samples = sample_posterior_distribution(x, config, nf, embedded_net,
-                                            x_normalizer, theta_normalizer)
-    if postprocessing is not None:
-        samples = postprocessing(samples, config)
 
-    map, mask, degeneracy_mask, uncertainty, ambiguity = estimate_theta(samples,
-                                                                        config,
-                                                                        postprocessing=postprocessing is not None)
-    folderpath = config['folderpath'] / 'posterior_distributions'
-    folderpath.mkdir(exist_ok=True, parents=True)
+    device = config['device']
+    x = x.to(device)
 
-    if mask.all() == False: # If at least one is False
+    N = x.shape[
+        0]  # Number of voxels to estimate microstructure parameters for
+    D = config['size_theta']  # Number of microstructure parameters to estimate
+
+    # Load the normalizers
+    theta_normalizer = load_normalizer(config['folderpath'] /
+                                       config['theta_normalizer_file'])
+    x_normalizer = load_normalizer(config['folderpath'] /
+                                   config['x_normalizer_file'])
+
+    # Load the trained model
+    embedded_net_state_dict = config['folderpath'] / config[
+        'embedder_state_dict_file']
+    nf_state_dict = config['folderpath'] / config['nf_state_dict_file']
+    embedded_net = get_embedded_net(input_dim=config['size_x'],
+                                    output_dim=config['nf_features'],
+                                    layer_1_dim=config['hidden_layers'][0],
+                                    layer_2_dim=config['hidden_layers'][1],
+                                    pretrained_state=embedded_net_state_dict,
+                                    use_MLP=config['use_MLP']).to(device)
+    nf = get_nf(input_dim=config['size_theta'],
+                nf_features=config['nf_features'],
+                n_flows=config['n_flows'],
+                pretrained_state=nf_state_dict).to(device)
+
+    embedded_net.eval()
+    nf.eval()
+
+    voxel_batch_size = config.get("voxel_batch_size", 50)
+
+    results = {
+        "map": [],
+        "mask": [],
+        "degeneracy": [],
+        "uncertainty": [],
+        "ambiguity": []
+    }
+
+    start_time = time()
+    for v_start in range(0, N, voxel_batch_size):
+        v_end = min(v_start + voxel_batch_size, N)
+
+        if verbose:
+            print(f"Processing voxels {v_start+1} to {v_end} / {N}")
+
+        x_batch = x[v_start:v_end]
+
+        # Sample posterior
+        samples = sample_posterior_distribution(x_batch, config, nf,
+                                                embedded_net, x_normalizer,
+                                                theta_normalizer,
+                                                verbose)  # (B, S, D)
+        if samples.ndim == 2:  # (S, D) - for single voxel, add batch dimension
+            samples = samples.unsqueeze(0)
+
         if postprocessing is not None:
-            param_fail = np.array(list(config["prior_postprocessing"].keys()))[mask == False]
-        else:
-            param_fail = np.array(list(config["prior"].keys()))[mask == False]
-        print(f'Microstructure estimation of voxel {voxel_id} did not work. '\
-              'Unable to fit two Gaussians on the posterior distribution of '
-              f'{", ".join(param_fail)}.')
+            B = samples.shape[0]
+            samples = postprocessing(samples.reshape(-1, D), config)
+            samples = samples.view(B, config["nb_samples"], -1)
 
-    if plot == True:
-        if postprocessing is None:
-            plot_posterior_distribution(samples, config, postprocessing=False,
-                                        ground_truth=theta_gt,
-                                        fig_file=f'posterior_distributions/posterior_distribution_voxel_{voxel_id}.png')
-            print(f'Parameters: {list(config["prior"].keys())}')
+        # Estimate MAP, degeneracy, uncertainty and ambiguity
+        map_b, mask_b, degeneracy_mask_b, uncertainty_b, ambiguity_b = estimate_theta(
+            samples, config, postprocessing is not None)
+
+        results["map"].append(map_b.detach().cpu())
+        results["mask"].append(mask_b.detach().cpu())
+        results["degeneracy"].append(degeneracy_mask_b.detach().cpu())
+        results["uncertainty"].append(uncertainty_b.detach().cpu())
+        results["ambiguity"].append(ambiguity_b.detach().cpu())
+
+        print("Before deleting samples and emptying cache")
+        print(torch.cuda.memory_allocated() / 1e9, "GB allocated")
+        print(torch.cuda.memory_reserved() / 1e9, "GB reserved")
+
+        del samples
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+
+        print("After deleting samples and emptying cache")
+        print(torch.cuda.memory_allocated() / 1e9, "GB allocated")
+        print(torch.cuda.memory_reserved() / 1e9, "GB reserved")
+
+    # Concatenate results from all batches
+    map = torch.cat(results["map"], dim=0)
+    mask = torch.cat(results["mask"], dim=0)
+    degeneracy_mask = torch.cat(results["degeneracy"], dim=0)
+    uncertainty = torch.cat(results["uncertainty"], dim=0)
+    ambiguity = torch.cat(results["ambiguity"], dim=0)
+
+    end_time = time()
+    computation_time = end_time - start_time  # in seconds
+
+    # Verbose logging
+    if verbose:
+
+        keys = (list(config["prior_postprocessing"].keys())
+                if postprocessing else list(config["prior"].keys()))
+
+        failed_voxels = (~mask).any(dim=-1)
+        n_failed = failed_voxels.sum().item()
+
+        print(f"\n=== μGUIDE Inference Summary ===")
+        print(f"Total voxels: {N}")
+        print(f"Computation time: {int(computation_time // 3600)}h "
+              f"{int((computation_time % 3600) // 60)}min "
+              f"{computation_time % 60:.2f}s")
+        print(f"Failed voxels: {n_failed} ({100*n_failed/N:.2f}%)")
+        print(f"Degenerate voxels: {degeneracy_mask.any(dim=-1).sum().item()} "
+              f"({100*degeneracy_mask.any(dim=-1).sum().item()/N:.2f}%)")
+
+        if n_failed > 0:
+            print("\n--- Failed voxel details (first 10) ---")
+
+            for n in torch.where(failed_voxels)[0][:10]:  # limit output
+                param_fail = [k for k, m in zip(keys, mask[n].cpu()) if not m]
+                print(
+                    f"Voxel {n.item()} failed for parameters {', '.join(param_fail)}"
+                )
+
+    # Plotting posterior distributions for a subset of voxels
+    if plot:
+
+        # Choose voxels to plot
+        if plot_random:
+            import random  # Import here to avoid unnecessary dependency if not plotting
+            idx = random.sample(range(N), min(plot_max_voxels, N))
         else:
-            plot_posterior_distribution(samples, config, postprocessing=True,
-                                        ground_truth=theta_gt,
-                                        fig_file=f'posterior_distributions/posterior_distribution_voxel_{voxel_id}_postprocessing.png')
-            print(f'Parameters: {list(config["prior_postprocessing"].keys())}')
-        
-        if theta_gt is not None:
-            print(f'Ground truth theta = {theta_gt}')
-        
-        print(f'Estimated theta = {map}')
-        print(f'Degeneracies = {degeneracy_mask}')
-        print(f'Uncertainties = {uncertainty} %')
-        print(f'Ambiguities = {ambiguity} %')
+            idx = list(range(min(plot_max_voxels, N)))
+
+        x_idx = x[idx]
+        samples = sample_posterior_distribution(x_idx, config, nf,
+                                                embedded_net, x_normalizer,
+                                                theta_normalizer,
+                                                verbose)  # (B, S, D)
+        if samples.ndim == 2:  # (S, D) - for single voxel, add batch dimension
+            samples = samples.unsqueeze(0)
+
+        if postprocessing is not None:
+            B = samples.shape[0]
+            samples = postprocessing(samples.reshape(-1, D), config)
+            samples = samples.view(B, config["nb_samples"], -1)
+
+        for n in range(samples.shape[0]):
+            if postprocessing is None:
+                plot_posterior_distribution(
+                    samples[n].detach().cpu(),
+                    config,
+                    postprocessing=False,
+                    ground_truth=None
+                    if theta_gt is None else theta_gt[n].detach().cpu(),
+                    fig_file=
+                    f'posterior_distributions/posterior_distribution_voxel_{n}.png'
+                )
+            else:
+                plot_posterior_distribution(
+                    samples[n].detach().cpu(),
+                    config,
+                    postprocessing=True,
+                    ground_truth=None
+                    if theta_gt is None else theta_gt[n].detach().cpu(),
+                    fig_file=
+                    f'posterior_distributions/posterior_distribution_voxel_{n}_postprocessing.png'
+                )
 
     return map, mask, degeneracy_mask, uncertainty, ambiguity
 
 
-def sample_posterior_distribution(x, config, nf, embedded_net, x_normalizer, theta_normalizer):
-    # Batch processing (Multiple voxels at once)
-    
-    if x.ndim == 1:
-        x = x.reshape(1,-1)
+def sample_posterior_distribution(
+    x: torch.Tensor,
+    config: Dict,
+    nf: nn.Module,
+    embedded_net: nn.Module,
+    x_normalizer,
+    theta_normalizer,
+    verbose: bool = False,
+) -> torch.Tensor:
+    """
+    Batched rejection sampling from normalizing flow.
 
-    if config['size_x'] != x.shape[1]:
+    Parameters
+    ----------
+    x : torch.Tensor, shape (N, size_x)
+        Observed diffusion MRI signal for N voxels. Its size must be identical to
+        the signals used for training (i.e. ``config['size_x']``).
+
+    config : dict
+        μGUIDE configuration.
+
+    nf : nn.Module
+        Normalizing flow model.
+
+    embedded_net : nn.Module
+        Neural network that computes the embedding of the observed signal used as
+        context for the normalizing flow.
+    
+    x_normalizer : Normalizer
+        Normalizer for the observed signal x, used to compute the embedding.
+
+    theta_normalizer : Normalizer
+        Normalizer for the microstructure parameters theta, used to sample from
+        the normalizing flow in the normalized space and then convert back to the
+        original space.
+
+    Returns
+    -------
+    samples : torch.Tensor, shape (B, S, D)
+    """
+
+    device = config['device']
+
+    if x.ndim == 1:
+        x = x.unsqueeze(0)  # Add batch dimension if only one voxel is provided
+
+    x = x.to(device)
+
+    B = x.shape[0]
+    S = config["nb_samples"]
+    D = config["size_theta"]
+
+    if config['size_x'] != x.shape[-1]:
         raise ValueError('x size set in config does not match x size used ' \
                          'for training')
 
-    # Normalize data
-    # x_norm = torch.tensor(x_normalizer(x), dtype=torch.float32, device=config['device'])
-    x_norm = x_normalizer(x).to(config['device'])
-    embedding = embedded_net(x_norm)
+    # Normalize data and compute embedding
+    with torch.no_grad():
+        x_norm = x_normalizer.to(device)(x)
+        embedding = embedded_net.to(device)(x_norm).detach()
+    if embedding.ndim == 1:
+        embedding = embedding.unsqueeze(0)
+
+    theta_normalizer = theta_normalizer.to('cpu')
+
+    # Get prior bounds for rejection sampling
+    prior_min = torch.tensor(
+        [config['prior'][p][0] for p in config['prior'].keys()], device=device)
+    prior_max = torch.tensor(
+        [config['prior'][p][1] for p in config['prior'].keys()], device=device)
+
+    # Base distribution
+    base_dist = dist.Normal(
+        torch.zeros((B, D), device=device),
+        torch.ones((B, D), device=device),
+    ).to_event(1)
+    transformed_dist = dist.ConditionalTransformedDistribution(base_dist, nf)
+    with torch.inference_mode():
+        cond_dist = transformed_dist.condition(embedding)
+
+    # Storage
+    chunk_size = config[
+        "nb_samples"]  # Start with the full number of samples, will be reduced if OOM occurs
+    z_buffer = torch.empty((chunk_size, B, D), device=device)
+    theta_buffer = torch.empty((B, chunk_size, D), device=device)
+    accepted_buffer = torch.empty((B, chunk_size),
+                                  dtype=torch.bool,
+                                  device=device)
+    samples = torch.empty((B, S, D), device=device)
+    counts = torch.zeros(B, dtype=torch.long, device=device)
 
     # Rejection sampling
-    nb_to_sample = config['nb_samples']
+    max_iter = 3000
+    fallback_iter = 50
     loop_iter = 0
-    max_loop_iter = 5000
-    prior_min = torch.Tensor([config['prior'][p][0] for p in config['prior'].keys()],
-                             device=config['device'])
-    prior_max = torch.Tensor([config['prior'][p][1] for p in config['prior'].keys()],
-                             device=config['device'])
-    samples = torch.tensor([], device=config['device'])
-    while (nb_to_sample > 0) and (loop_iter < max_loop_iter):
 
-        base_dist = dist.Normal(
-            loc=torch.zeros((nb_to_sample,) + (config['size_theta'],), device=config['device']),
-            scale=torch.ones((nb_to_sample,) + (config['size_theta'],), device=config['device'])
-        )
-        transformed_dist = dist.ConditionalTransformedDistribution(base_dist, nf)
+    # Rejection loop for the current voxel batch
+    while (counts < S).any() and loop_iter < max_iter:
 
-        with torch.no_grad():
-            samples_norm = transformed_dist.condition(embedding).sample()
-            candidates = theta_normalizer.inverse(samples_norm)
+        try:
+            # sample candidates (batched)
+            with torch.inference_mode():
+                z = cond_dist.sample((chunk_size, ))  # (S, B, D)
+                z_buffer.copy_(z.cpu(), non_blocking=True)  # (S, B, D)
+                del z
+                theta_buffer[:] = theta_normalizer.inverse(
+                    z_buffer.permute(1, 0, 2))  # (B, S, D)
 
-        # if loop_iter == 100 and samples.size == 0:
-        #     accepted = np.ones_like(candidates[:, 0], dtype=bool)
-        # elif (loop_iter < max_loop_iter):
-        #     accepted = np.all((candidates > prior_min) & (candidates < prior_max), axis=1)
-        # else:
-        #     accepted = np.ones(accepted.shape, dtype=bool)
-        #     print(f'Nb good samples: {len(samples)}')
+            # Check bounds
+            accepted_buffer[:] = ((theta_buffer > prior_min) &
+                                  (theta_buffer < prior_max)).all(
+                                      dim=2)  # (B, S)
 
-        if loop_iter == 100 and len(samples) == 0:
-            accepted = torch.ones(accepted.shape, dtype=bool, device=config['device'])
-        else:
-            accepted = torch.all((candidates > prior_min) & (candidates < prior_max), axis=1)
-        samples = torch.cat((samples, candidates[accepted]), dim=0)
+            # Fallback to avoid infinite loop if no samples are accepted for
+            # some voxels after many iterations
+            if loop_iter == fallback_iter:
+                stuck_voxels = counts <= 100
+                if verbose:
+                    print(
+                        f"Fallback triggered for {stuck_voxels.sum().item()} "
+                        f"voxels out of {B}. Accepting all samples for these voxels."
+                    )
 
-        nb_to_sample = config['nb_samples'] - len(samples)
-        loop_iter += 1
+                if stuck_voxels.any():
+                    # Accept everything for those voxels
+                    accepted_buffer[stuck_voxels] = True
+
+            # Fill samples per voxel
+            for b in range(B):
+
+                n_accept = accepted_buffer[b].sum().item()
+                if n_accept == 0:
+                    continue
+
+                n_remaining = S - counts[b]
+                n_take = min(n_accept, n_remaining)
+
+                samples[b, counts[b]:counts[b] +
+                        n_take] = theta_buffer[b][accepted_buffer[b]][:n_take]
+
+                counts[b] += n_take
+
+            loop_iter += 1
+
+        except RuntimeError as e:
+            if "out of memory" in str(e):
+                chunk_size = max(1, chunk_size // 2)
+                torch.cuda.empty_cache()
+                print(f"[OOM] Reducing chunk_size → {chunk_size}")
+                continue
+            else:
+                raise e
+
+    if verbose:
+        print(f"Rejection sampling completed in {loop_iter} iterations.")
+
+    # Safety fallback
+    if (counts < S).any():
+        for b in range(B):
+            if counts[b] < S:
+                if verbose:
+                    print(
+                        f"Warning: rejection sampling incomplete for voxel {b},"
+                        " filling with last samples")
+                samples[b, counts[b]:] = samples[b, :counts[b]].mean(dim=0)
 
     return samples
 
 
-def estimate_theta(samples, config, postprocessing=False):
-    # Get MAP, degeneracy, uncertainty and ambiguity
+def estimate_theta(
+    samples: torch.Tensor,
+    config: Dict,
+    postprocessing: bool = False,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor,
+           torch.Tensor]:
+    """
+    Estimate MAP, mask, degeneracy, uncertainty and ambiguity
+    from posterior samples (batched).
 
-    # Check if samples have the save size as size_theta in config
-    if (postprocessing == False) & (config['size_theta'] != samples.shape[1]):
-            raise ValueError('Theta size set in config does not match theta ' \
-                            'size used for training')
-    elif (postprocessing == True) & (len(config['prior_postprocessing']) != samples.shape[1]):
-            raise ValueError('Theta size does not match theta size of postprocessing.')
+    Parameters
+    ----------
+    samples : torch.Tensor, shape (B, S, D)
+        Posterior samples for B voxels in batch, with S samples each, and D microstructure parameters.
 
-    if postprocessing == True:
-        prior = config['prior_postprocessing']
-    else:
-        prior = config['prior']
+    config : dict
+        μGUIDE configuration.
 
-    theta_mean = samples.mean(0)
+    postprocessing : bool, default=False
+        Whether the samples have been postprocessed to convert surrogate parameters
+        back to the original microstructure parameters. If True, the function will
+        check the size of the samples against the size of the postprocessed prior
+        instead of the original prior.
 
-    map = theta_mean
-    # mask = np.ones(len(prior), dtype=bool)
-    mask = (theta_mean >= torch.tensor([prior[param][0] for param in prior.keys()])) & \
-           (theta_mean <= torch.tensor([prior[param][1] for param in prior.keys()]))
-    print(f'mask = {mask}')
+    Returns
+    -------
+    map_est : (B, D)
+    mask : (B, D)
+    degeneracy_mask : (B, D)
+    uncertainty : (B, D)
+    ambiguity : (B, D)
+    """
 
-    degeneracy_mask = torch.zeros(len(prior), dtype=torch.bool, device=config['device'])
-    uncertainty = torch.ones(len(prior), dtype=torch.float32, device=config['device']) * 100
-    ambiguity = torch.ones(len(prior), dtype=torch.float32, device=config['device']) * 100
+    device = config['device']
+    B, S, D = samples.shape
 
-    # For testing 
-    if postprocessing == False:
-        prior = config['prior']
-    else:
-        prior = config['prior_postprocessing']
-    
-    fig, axs = plt.subplots(
-        nrows=1,
-        ncols=len(prior),
-        figsize=(5 * len(prior), 5),
-        sharey="row"
-    )
-    for p, param in enumerate(prior.keys()):
-        hist_uGUIDE, bin_edges = torch.histogram(samples[:,p], density=True,
-                                                 bins=100)
-        x_hist_uGUIDE = (bin_edges[:-1] + bin_edges[1:]) / 2  # Midpoints of bins
+    prior = (config["prior_postprocessing"]
+             if postprocessing else config["prior"])
 
+    prior_min = torch.tensor([prior[p][0] for p in prior.keys()],
+                             device=device)
+    prior_max = torch.tensor([prior[p][1] for p in prior.keys()],
+                             device=device)
 
-        axs[p].plot(x_hist_uGUIDE, hist_uGUIDE)
-        axs[p].fill_between(x_hist_uGUIDE, hist_uGUIDE, alpha=0.4)
-        axs[p].set_xlabel(param, fontsize=20)
-        axs[p].set_xlim(prior[param][0], prior[param][1])
-        axs[p].set_yticks([])
-        axs[p].tick_params(axis='x', which='major', labelsize=20)
+    # Initialize map with mean values, will be updated for non-degenerate cases
+    theta_mean = samples.mean(dim=1)  # (B, D)
+    map = theta_mean.clone()
 
-    for i, param in enumerate(prior.keys()):
-        # if (theta_mean[i] < prior[param][0]) \
-        #     or (theta_mean[i] > prior[param][1]):
-        #     mask[i] = False
-        # else:
-        if mask[i]:
-            # Only compute degeneracy for non-masked/valid voxel estimations
-            # x_hist, hist = get_hist(samples[:,i], prior[param])
-            hist, bin_edges = torch.histogram(samples[:,i], density=True,
-                                              bins=100)
-            x_hist = (bin_edges[:-1] + bin_edges[1:]) / 2  # Midpoints of bins
-            # param_gauss = fit_two_gaussians(x_hist, hist, config)
-            # print(f'samples mean = {samples[:,i].mean()}')
-            param_gauss = fit_two_gaussians(samples[:,i], config, prior[param])
-            # print(f'param_gauss = {param_gauss}')
-            # print(f'two gaussians = {two_gaussians(x_hist, *param_gauss)}')
-            axs[i].plot(x_hist, two_gaussians(x_hist, *param_gauss).detach().numpy(),
-                        color='red', label='Fitted')
-            # print(f'mu1 = {param_gauss[1]}, mu2 = {param_gauss[4]}')
-            # param_gauss = torch.Tensor(fit_two_gaussians(x_hist.detach().numpy(), hist.detach().numpy()),
-            #                            device=config['device'])
-            # If the gaussian fitting did not work, set this voxel's parameter as invalid
+    # Mask for parameters where the mean is outside the prior bounds (estimation failure)
+    mask = (theta_mean >= prior_min) & (theta_mean <= prior_max)
+
+    # Uncertainty (IQR)
+    q1 = torch.quantile(samples, 0.25, dim=1)
+    q3 = torch.quantile(samples, 0.75, dim=1)
+    uncertainty = (q3 - q1) / (prior_max - prior_min) * 100
+
+    # Initialize degeneracy mask and ambiguity with default values (non-degenerate, 100% ambiguity)
+    degeneracy_mask = torch.zeros((B, D), dtype=torch.bool, device=device)
+    ambiguity = torch.ones((B, D), device=device) * 100
+
+    # Gaussian fitting to determine degeneracy and update MAP and ambiguity
+    # for non-degenerate cases
+    for b in range(B):
+        # Loop only over non-masked/valid parameters
+        for d in torch.where(mask[b])[0]:
+
+            # Compute histogram for the d-th parameter of the b-th voxel to
+            # check for degeneracy
+            hist, edges = _histogram_1d(samples[b, :, d],
+                                        bins=80,
+                                        density=True)
+            hist_smooth = smooth_histogram(hist, kernel_size=7)
+            x_hist = (edges[:-1] + edges[1:]) / 2  # Midpoints of bins
+
+            # Fit two Gaussians to the histogram using scipy (CPU)
+            param_gauss = fit_two_gaussians(
+                x_hist.cpu().numpy(),
+                hist_smooth.cpu().numpy(),
+            )
+
+            # Failed fit: set mask to False and skip degeneracy and ambiguity estimation
             if param_gauss[0] == 0 and param_gauss[3] == 0:
-                mask[i] = False
-            else:
-                degeneracy_mask[i] = is_degenerate(param_gauss, prior[param], config)
-                map[i] = estimate_max_a_posteriori(param_gauss, prior[param], config)
-                if degeneracy_mask[i] == False: # If degenerate, uncertainty and ambiguity are set to 100%
-                    ambiguity[i] = estimate_ambiguity(param_gauss, prior[param], config)
-                    uncertainty[i] = estimate_uncertainty(samples[:,i], prior[param])
+                mask[b, d] = False
+                continue
 
+            param_gauss_t = torch.tensor(param_gauss, device=device)
 
-    fig.tight_layout()
-    plt.show()
-    print(f'Degeneracy mask = {degeneracy_mask}')
+            bounds = prior[list(prior)[d]]
 
+            degeneracy_mask[b, d] = is_degenerate(param_gauss_t, bounds,
+                                                  config)
 
+            map[b, d] = estimate_max_a_posteriori(param_gauss_t, bounds,
+                                                  config)
+
+            if not degeneracy_mask[b, d]:
+                ambiguity[b, d] = estimate_ambiguity(param_gauss_t, bounds,
+                                                     config)
+
+    # Set uncertainty and ambiguity to 100% for degenerate cases and for masked/invalid cases
+    uncertainty[~mask] = 100
+    ambiguity[~mask] = 100
+    uncertainty[degeneracy_mask] = 100
+    ambiguity[degeneracy_mask] = 100
 
     return map, mask, degeneracy_mask, uncertainty, ambiguity
 
 
 def is_degenerate(param_gauss, prior_bounds, config, num_points=1000):
     """
-    Determines degeneracy of a Gaussian mixture by checking for multiple significant peaks.
-    Vectorized with PyTorch.
+    Determines degeneracy of a Gaussian mixture by checking for multiple 
+    significant peaks.
 
-    Parameters:
-        param_gauss (torch.Tensor): Tensor of Gaussian parameters, shape (num_params, 6).
-        prior_bounds (torch.Tensor): Tensor of min/max bounds, shape (num_params, 2).
-        num_points (int): Number of points for evaluating the Gaussians.
+    Parameters
+    ----------
+    param_gauss (torch.Tensor):
+        Tensor of Gaussian parameters. Shape (6,) corresponding to 
+        (f1, mu1, sigma1, f2, mu2, sigma2).
+    prior_bounds (torch.Tensor): 
+        Tensor of min/max bounds, shape (num_params, 2).
+    num_points (int):
+        Number of points for evaluating the Gaussians.
 
-    Returns:
-        torch.Tensor: Boolean tensor indicating degeneracy for each parameter, shape (num_params,).
+    Returns
+    --------
+    torch.Tensor
+        Boolean tensor indicating degeneracy for each parameter, shape (num_params,).
     """
-    degenerate = False
+    device = config['device']
 
-    x = torch.linspace(prior_bounds[0], prior_bounds[1], num_points,
-                       device=config['device'])
-    der = derivative_two_gaussians(x, *param_gauss) # check if same device as x
-# !!!!!!!!!!!!!!!!!!!!!!!!!
+    degenerate = torch.zeros((), dtype=torch.bool, device=device)
+
+    x = torch.linspace(prior_bounds[0],
+                       prior_bounds[1],
+                       num_points,
+                       device=device)
+    der = derivative_two_gaussians(x, *param_gauss)
 
     sign_d = sign_der(der)
-    idx_der = np.where(sign_d[:-1] != sign_d[1:])[0] + 1
-
-    # idx_der = torch.sign(der[:-1]) != torch.sign(der[1:])  # Zero-crossings
+    idx_der = torch.nonzero(sign_d[:-1] != sign_d[1:],
+                            as_tuple=False).flatten() + 1
 
     # If idx_der contain two consecutive numbers, means it is a suprious spike.
     # Do not take it into account
-    if len(idx_der) > 1:
-        der_to_keep = []
-        for i_d, d in enumerate(idx_der):
-            before = False
-            after = False
-            if i_d != 0: # if not first one
-                if d - 1 == idx_der[i_d-1]: # consecutive with the one before
-                    before = True
-            if i_d != len(idx_der) - 1: # not the last one  
-                if d + 1 == idx_der[i_d+1]: # consecutive with the one after
-                    after = True
-            if after == False and before == False:
-                der_to_keep.append(d)
-        idx_der = der_to_keep
+    if idx_der.numel() > 1:
+        diffs = idx_der[1:] - idx_der[:-1]
+        consecutive_with_prev = torch.cat(
+            (torch.zeros(1, dtype=torch.bool, device=device), diffs == 1))
+        consecutive_with_next = torch.cat(
+            (diffs == 1, torch.zeros(1, dtype=torch.bool, device=device)))
+        keep = ~(consecutive_with_prev | consecutive_with_next)
+        idx_der = idx_der[keep]
 
-    if len(idx_der) > 1:
+    if idx_der.numel() > 1:
         # If distance between the mean of the two gaussians < sum of std,
         # then the two are too close to distinguish them. Not degenerate
         dist_mean = torch.abs(param_gauss[1] - param_gauss[4])
         if dist_mean > param_gauss[2] + param_gauss[5]:
-            degenerate = True
+            degenerate = torch.ones((), dtype=torch.bool, device=device)
 
     return degenerate
 
 
-def estimate_max_a_posteriori(param_gauss, prior_bounds, config, num_points=1000):
-    x = torch.linspace(prior_bounds[0], prior_bounds[1], num_points,
+def estimate_max_a_posteriori(param_gauss,
+                              prior_bounds,
+                              config,
+                              num_points=1000):
+    """
+    Estimates the maximum-a-posteriori (MAP) from the parameters of a Gaussian
+    mixture by evaluating the mixture on a grid and finding the maximum.
+    
+    Parameters
+    ----------
+    param_gauss (torch.Tensor)
+        Tensor of Gaussian parameters, shape (num_params, 6).
+    prior_bounds (torch.Tensor)
+    Tensor of min/max bounds, shape (num_params, 2).
+    num_points (int)
+        Number of points for evaluating the Gaussians.
+    Returns
+    --------
+    torch.Tensor
+        Estimated MAP value for each parameter, shape (num_params,).
+    """
+    x = torch.linspace(prior_bounds[0],
+                       prior_bounds[1],
+                       num_points,
                        device=config['device'])
     y = two_gaussians(x, *param_gauss)
-    map = x[y == y.max()]
+    map = x[torch.argmax(y)]
+    # check if multiple values in map (i.e. multiple peaks with same max value)
+    if map.numel() > 1:
+        print(f'Multiple peaks with same max value found. map = {map}')
+        map = map[0]  # Take the first of the peaks' locations as MAP estimate
     return map
 
 
@@ -334,54 +641,46 @@ def estimate_ambiguity(param_gauss, prior_bounds, config, num_points=1000):
     Computes ambiguity as the percentage of the domain where the posterior is above half-max.
     Vectorized with PyTorch.
     
-    Parameters:
-        param_gauss (torch.Tensor): Tensor of Gaussian parameters, shape (num_params, 6).
-        prior_bounds (torch.Tensor): Tensor of min/max bounds, shape (num_params, 2).
-        num_points (int): Number of points for evaluating the Gaussians.
+    Parameters
+    ----------
+    param_gauss (torch.Tensor)
+        Tensor of Gaussian parameters, shape (num_params, 6).
+    prior_bounds (torch.Tensor)
+        Tensor of min/max bounds, shape (num_params, 2).
+    config (dict)
+        Configuration dictionary.
+    num_points (int)
+        Number of points for evaluating the Gaussians.
 
-    Returns:
-        torch.Tensor: Ambiguity measure for each parameter, shape (num_params,).
+    Returns
+    --------
+    torch.Tensor
+        Ambiguity measure for each parameter, shape (num_params,).
     """
     # x = np.linspace(prior_bounds[0], prior_bounds[1], num_points)
-    # 
+    #
     # # ambiguity = (len(np.where(y > y.max()/2)[0]) / x.shape[0]) * 100
     # # return ambiguity
     # return (np.count_nonzero(y > y.max() / 2) / x.shape[0]) * 100
 
-    x = torch.linspace(prior_bounds[0], prior_bounds[1], num_points,
+    x = torch.linspace(prior_bounds[0],
+                       prior_bounds[1],
+                       num_points,
                        device=config['device'])
     y = two_gaussians(x, *param_gauss)
 
     half_max = y.max(dim=0, keepdim=True)[0] / 2
-    ambiguity = (torch.sum(y > half_max, dim=0).float() / num_points) * 100  # Percentage of domain above half-max
+    ambiguity = (torch.sum(y > half_max, dim=0).float() /
+                 num_points) * 100  # Percentage of domain above half-max
     return ambiguity
 
 
-def estimate_uncertainty(samples, prior_bounds):
-    """
-    Computes uncertainty using interquartile range (IQR) as a percentage of the prior range.
-    Vectorized with PyTorch for GPU acceleration.
-    
-    Parameters:
-        samples (torch.Tensor): Tensor of posterior samples, shape (N, num_params).
-        prior_bounds (torch.Tensor): Tensor of shape (num_params, 2) with min/max bounds.
-
-    Returns:
-        torch.Tensor: Uncertainty for each parameter in percentage, shape (num_params,).
-    """
-    # q3, q1 = np.percentile(samples, [75, 25])
-    q1 = torch.quantile(samples, 0.25, dim=0)
-    q3 = torch.quantile(samples, 0.75, dim=0)
-    iqr = q3 - q1
-    # uncertainty = iqr / (prior_bounds[1] - prior_bounds[0])
-    # uncertainty *= 100
-    # return uncertainty
-    return (iqr / (prior_bounds[1] - prior_bounds[0])) * 100
-
-
 def one_gaussian(x, f, mu, sigma):
-    SQRT_2PI = torch.sqrt(torch.tensor(2.0 * torch.pi, dtype=torch.float32, device=x.device))
-    return f * 1/(sigma*SQRT_2PI) * torch.exp(-1/2 * ((x - mu) / sigma)**2)
+    sigma = torch.clamp(sigma, min=1e-6)
+    SQRT_2PI = torch.sqrt(
+        torch.tensor(2.0 * torch.pi, dtype=torch.float32, device=x.device))
+    return f * 1 / (sigma * SQRT_2PI) * torch.exp(-1 / 2 *
+                                                  ((x - mu) / sigma)**2)
 
 
 def two_gaussians(x, f1, mu1, sigma1, f2, mu2, sigma2):
@@ -389,275 +688,113 @@ def two_gaussians(x, f1, mu1, sigma1, f2, mu2, sigma2):
 
 
 def derivative_one_gaussian(x, f, mu, sigma):
-    return - (x - mu)/sigma**2 * one_gaussian(x, f, mu, sigma)
+    return -(x - mu) / sigma**2 * one_gaussian(x, f, mu, sigma)
 
 
 def derivative_two_gaussians(x, f1, mu1, sigma1, f2, mu2, sigma2):
-    return derivative_one_gaussian(x, f1, mu1, sigma1) + derivative_one_gaussian(x, f2, mu2, sigma2)
+    return derivative_one_gaussian(
+        x, f1, mu1, sigma1) + derivative_one_gaussian(x, f2, mu2, sigma2)
 
 
 def sign_der(derivative):
     s = torch.sign(derivative)
-    # s = np.sign(derivative)
+    if s.numel() == 0:
+        return s
+
     if s[0] == 0:
-        s[0] = s[s != 0][0]
-    for i in np.arange(1, s.shape[0]):
+        nonzero = torch.nonzero(s != 0, as_tuple=False)
+        if nonzero.numel() == 0:
+            return s
+        s[0] = s[nonzero[0, 0]]
+
+    for i in range(1, s.shape[0]):
         if s[i] == 0:
-            s[i] = s[i-1]
+            s[i] = s[i - 1]
     return s
 
 
-def get_hist(samples):
-    hist, bin_edges = torch.histogram(samples, density=False, bins=100)
-    # n = len(hist)
-    # x_hist=np.zeros((n),dtype=float) 
-    # for ii in range(n):
-    #     x_hist[ii]=(bin_edges[ii+1]+bin_edges[ii])/2
-    x_hist = (bin_edges[:-1] + bin_edges[1:]) / 2  # Midpoints of bins
-    return x_hist, hist
+def _histogram_1d(x: torch.Tensor,
+                  bins: int = 80,
+                  density: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    CUDA-safe 1D histogram.
+    Uses torch.histc (CUDA-supported) and returns (hist, bin_edges) on x.device.
+    """
+    device = x.device
+    x1 = x.detach().flatten().to(torch.float32)
+    if x1.numel() == 0:
+        hist = torch.zeros((bins, ), device=device, dtype=torch.float32)
+        bin_edges = torch.linspace(0.0,
+                                   1.0,
+                                   bins + 1,
+                                   device=device,
+                                   dtype=torch.float32)
+        return hist, bin_edges
+
+    x_min = torch.min(x1)
+    x_max = torch.max(x1)
+    # histc requires min < max; if all values equal, widen slightly
+    if torch.isclose(x_min, x_max):
+        eps = torch.tensor(1e-6, device=device, dtype=torch.float32)
+        x_min = x_min - eps
+        x_max = x_max + eps
+
+    try:
+        # Fast path: histc (usually CUDA-supported)
+        hist = torch.histc(x1, bins=bins, min=float(x_min), max=float(x_max))
+        bin_edges = torch.linspace(float(x_min),
+                                   float(x_max),
+                                   bins + 1,
+                                   device=device,
+                                   dtype=torch.float32)
+
+        if density:
+            bin_width = (bin_edges[1] - bin_edges[0]).clamp_min(1e-12)
+            hist_sum = hist.sum().clamp_min(1e-12)
+            hist = hist / (hist_sum * bin_width)
+
+        return hist, bin_edges
+
+    except Exception as e:
+        # Fallback: CPU histogram, then move results back to original device.
+        x_cpu = x1.detach().to("cpu")
+        hist_cpu, bin_edges_cpu = torch.histogram(x_cpu,
+                                                  bins=bins,
+                                                  density=density)
+        hist = hist_cpu.to(device)
+        bin_edges = bin_edges_cpu.to(device)
+        return hist, bin_edges
 
 
-# def fit_two_gaussians(x_hist, hist, config, lr=1e-2, max_iter=500):
-#     min_hist = x_hist[0]
-#     max_hist = x_hist[-1]
-
-#     # Initialize parameters: [f1, mu1, sigma1, f2, mu2, sigma2]
-#     params = torch.nn.Parameter(torch.tensor([
-#         1.0,                              # f1
-#         (min_hist + max_hist) / 3,        # mu1
-#         x_hist.std(),                     # sigma1
-#         1.0,                              # f2
-#         2 *(min_hist + max_hist) / 3,     # mu2
-#         x_hist.std()                      # sigma2
-#     ], dtype=torch.float32, device=config['device']))
-
-#     # optimizer = torch.optim.SGD([params], lr=lr, momentum=0.9)
-#     optimizer = torch.optim.LBFGS([params], max_iter=max_iter, line_search_fn='strong_wolfe')
-
-#     # lower_bounds = torch.tensor([0.0, min_hist, 1e-3, 0.0, min_hist, 1e-3],
-#     #                             device=config['device'])
-#     # upper_bounds = torch.tensor([10.0, max_hist, max_hist, 10.0, max_hist, max_hist],
-#     #                             device=config['device'])
-
-#     # def closure():
-#     #     optimizer.zero_grad()
-#     #     # clamped_params = torch.max(torch.min(params, upper_bounds), lower_bounds)
-#     #     # clamped_params = params
-#     #     y_pred = two_gaussians(x_hist, *params)  # Unclamped params
-#     #                         #    clamped_params[0], clamped_params[1],
-#     #                         #    clamped_params[2], clamped_params[3],
-#     #                         #    clamped_params[4], clamped_params[5])        
-#     #     loss = torch.mean((hist - y_pred)**2)
-#     #     # separation_penalty = -torch.abs(params[1] - params[4])  # mu1 - mu2
-#     #     # loss = loss + 0.1 * separation_penalty
-#     #     loss.backward()
-#     #     return loss
-
-#     amplitude_upper = hist.max() * 1.5  # 50% buffer above max height
-    
-#     def transform(raw, amplitude_upper=amplitude_upper):
-#         lower = torch.tensor([0.0, min_hist, 1e-4,
-#                               0.0, min_hist, 1e-4],
-#                               device=config['device'])
-#         upper = torch.tensor([amplitude_upper, max_hist, (max_hist-min_hist)/2, 
-#                               amplitude_upper, max_hist, (max_hist-min_hist)/2],
-#                               device=config['device'])
-#         return lower + (upper - lower) * torch.sigmoid(raw)
-    
-#     optimizer = torch.optim.Adam([params], lr=lr)
-#     for i in range(max_iter):
-#         optimizer.zero_grad()
-#         params = transform(params)
-#         y_pred = two_gaussians(x_hist, *params)
-#         loss = torch.mean((hist - y_pred) ** 2)
-#         loss.backward()
-#         optimizer.step()
-
-#     # try:
-#     #     # for _ in range(max_iter):
-#     #         # optimizer.zero_grad()
-
-#     #         # Clamp parameters within bounds
-#     #         # clamped_params = torch.max(torch.min(params, upper_bounds), lower_bounds)
-#     #         # clamped_params = torch.clamp(params, lower_bounds, upper_bounds)
-#     #         # clamped_params = params
-#     #         # y_pred = two_gaussians(x_hist,
-#     #         #                        clamped_params[0], clamped_params[1],
-#     #         #                        clamped_params[2], clamped_params[3],
-#     #         #                        clamped_params[4], clamped_params[5])
-
-#     #         # loss = torch.mean((hist - y_pred)**2)
-#     #         # loss.backward()
-#     #         # optimizer.step()
-#     #     optimizer.step(closure)
-
-#     #     # fitted = torch.max(torch.min(params, upper_bounds), lower_bounds)
-#     #     # fitted = torch.clamp(params, lower_bounds, upper_bounds)
-#     #     fitted = params
-
-#     # except Exception:
-#     #     fitted = torch.zeros(6)
-#     #     print(traceback.format_exc())
-    
-#     fitted=params
-#     return fitted.to(config['device'])
-
-#     # try:
-#     #     param_gauss, _ = optimize.curve_fit(two_gaussians, x_hist, hist,
-#     #                                         bounds=([0.0, min_hist, 0.0, 0.0, min_hist, 0.0], [10, max_hist, max_hist, 10, max_hist, max_hist]),
-#     #     )
-#     # except Exception:
-#     #     print('Gaussian fitting did not work.')
-#     #     print(traceback.format_exc())
-#     #     param_gauss = np.zeros(6)
-#     #     # print(traceback.format_exc())
-#     # return param_gauss
-
-# def get_transform_bounds(hist, min_hist, max_hist, device):
-#     amplitude_upper = hist.max() * 1.5
-#     hist_range = max_hist - min_hist
-#     lower = torch.tensor([0.0, min_hist, 1e-4, 0.0, min_hist, 1e-4], device=device)
-#     upper = torch.tensor([
-#         amplitude_upper, max_hist, hist_range / 2,
-#         amplitude_upper, max_hist, hist_range / 2
-#     ], device=device)
-#     return lower, upper
-
-# def transform(raw, lower, upper):
-#     return lower + (upper - lower) * torch.sigmoid(raw)
-
-# def fit_two_gaussians(x_hist, hist, config, lr=1e-2, max_iter=1000):
-#     min_hist = x_hist.min()
-#     max_hist = x_hist.max()
-
-#     lower, upper = get_transform_bounds(hist, min_hist, max_hist, config['device'])
-
-#     # raw_params = torch.nn.Parameter(torch.randn(6, device=device))  # Initial unbounded params
-#     # Initialize parameters: [f1, mu1, sigma1, f2, mu2, sigma2]
-#     raw_params = torch.nn.Parameter(torch.tensor([
-#         1.0,                              # f1
-#         (min_hist + max_hist) / 3,        # mu1
-#         x_hist.std(),                     # sigma1
-#         1.0,                              # f2
-#         2 *(min_hist + max_hist) / 3,     # mu2
-#         x_hist.std()                      # sigma2
-#     ], dtype=torch.float32, device=config['device']))
-#     optimizer = torch.optim.Adam([raw_params], lr=lr)
-
-#     lambda_sep_penaly = 0.1  # Separation penalty weight
-#     lambda_f_penaly = 0  # Separation penalty weight
-#     lambda_std_penaly = 0  # Separation penalty weight
-
-    
-#     MSE_loss = []
-#     mean_sep_penalty_loss = []
-#     mean_f_penalty_loss = []
-#     mean_std_penalty_loss = []
-    
-#     n_restarts=20
-#     best_loss = float('inf')
-#     best_params = None
-
-#     for _ in range(n_restarts):
-#         # Raw parameters: [amp1, mu1, raw_std1, amp2, mu2, raw_std2]
-#         raw_params = torch.nn.Parameter(torch.randn(6, device=config['device']))
-#         optimizer = torch.optim.Adam([raw_params], lr=lr)
-
-#         for i in range(max_iter):
-#             optimizer.zero_grad()
-#             f1 = raw_params[0]
-#             # f1 = torch.sigmoid(raw_params[0]) * (amplitude_upper - amplitude_lower) + amplitude_lower
-#             mu1 = torch.sigmoid(raw_params[1]) * (max_hist - min_hist) + min_hist
-#             # mu1 = F.softplus(raw_params[1])
-#             sigma1 = F.softplus(raw_params[2]) + 1e-3
-#             f2 = raw_params[3]
-#             # f2 = torch.sigmoid(raw_params[3]) * (amplitude_upper - amplitude_lower) + amplitude_lower
-#             mu2 = torch.sigmoid(raw_params[4]) * (max_hist - min_hist) + min_hist
-#             # mu2 = F.softplus(raw_params[4])
-#             sigma2 = F.softplus(raw_params[5]) + 1e-3
-#             # params = transform(raw_params, lower, upper)
-#             y_pred = two_gaussians(x_hist, f1, mu1, sigma1, f2, mu2, sigma2)
-#             mean_sep_penalty = torch.exp(-torch.abs(mu1 - mu2))  # or 1 / (1 + |mu1 - mu2|)
-#             mean_f_penalty = torch.abs(f1 - f2)
-#             mean_std_penalty = torch.abs(sigma1 - sigma2)
-#             loss = F.mse_loss(y_pred, hist) \
-#                     + lambda_sep_penaly * mean_sep_penalty \
-#                     + lambda_f_penaly * mean_f_penalty \
-#                     + lambda_std_penaly * mean_std_penalty
-#             if i % 50 == 0:
-#                 MSE_loss.append(loss.item())
-#                 mean_sep_penalty_loss.append(mean_sep_penalty.item())
-#                 mean_f_penalty_loss.append(mean_f_penalty.item())
-#                 mean_std_penalty_loss.append(mean_std_penalty.item())
-#             loss.backward()
-#             optimizer.step()
-
-#         if loss.item() < best_loss:
-#             best_loss = loss.item()
-#             best_params = torch.tensor([f1, mu1, sigma1, f2, mu2, sigma2], device=config['device'])
+def one_gaussian_np(x, f, mu, sigma):
+    return f * 1 / (sigma *
+                    (np.sqrt(2 * np.pi))) * np.exp(-1 / 2 *
+                                                   ((x - mu) / sigma)**2)
 
 
-#     print(f'MSE loss = {MSE_loss}')
-#     print(f'Mean separation penalty = {mean_sep_penalty_loss}')
-#     print(f'Mean f penalty = {mean_f_penalty_loss}')
-#     print(f'Mean std penalty = {mean_std_penalty_loss}')
-#     # fitted = transform(raw_params, lower, upper)
-#     # return torch.Tensor([f1, mu1, sigma1, f2, mu2, sigma2], device=config['device'])
-#     return best_params
+def two_gaussians_np(x, f1, mu1, sigma1, f2, mu2, sigma2):
+    return one_gaussian_np(x, f1, mu1, sigma1) + one_gaussian_np(
+        x, f2, mu2, sigma2)
 
-class GMM2(nn.Module):
-    def __init__(self, x, device='cpu'):
-        super().__init__()
-        self.device = device
-        self.x = x.to(device)
 
-        # Logits for mixture weights
-        self.logits = nn.Parameter(torch.tensor([0.0, 0.0], device=device))  # Softmaxed later
+def fit_two_gaussians(x_hist, hist):
+    min_hist = x_hist[0]
+    max_hist = x_hist[-1]
+    try:
+        param_gauss, _ = optimize.curve_fit(
+            two_gaussians_np,
+            x_hist,
+            hist,
+            bounds=([0.0, min_hist, 0.0, 0.0, min_hist, 0.0],
+                    [np.inf, max_hist, max_hist, np.inf, max_hist, max_hist]))
+    except Exception:
+        param_gauss = np.zeros(6)
+        # print(traceback.format_exc())
+    return param_gauss
 
-        # Means and stddevs
-        self.raw_means = nn.Parameter(torch.tensor([x.mean()*0.9, x.mean()*1.1], device=device))
-        self.raw_log_stds = nn.Parameter(torch.tensor([-1.0, -1.0], device=device))  # small stds
-    
-    def forward(self, prior):
-        # Convert parameters
-        weights = F.softmax(self.logits, dim=0).clamp(min=1e-3, max=1.0)
 
-        # Sigmoid squashes raw_means to (0,1), then scale to prior range
-        mu1 = torch.sigmoid(self.raw_means[0]) * (prior[1] - prior[0]) + prior[0]
-        mu2 = torch.sigmoid(self.raw_means[1]) * (prior[1] - prior[0]) + prior[0]
-
-        # stds = softplus(log_std) + small constant
-        sigma1 = F.softplus(self.raw_log_stds[0]) + 1e-3
-        sigma2 = F.softplus(self.raw_log_stds[1]) + 1e-3
-
-        x = self.x
-
-        mixture = two_gaussians(x, weights[0], mu1, sigma1,
-                                weights[1], mu2, sigma2)
-
-        # Return negative log likelihood
-        return -torch.log(mixture + 1e-12).mean()
-    
-def fit_two_gaussians(samples, config, prior, lr=1e-2, max_iter=500):
-    model = GMM2(samples, device=config['device'])
-    model.to(config['device'])
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-
-    for i in range(max_iter):
-        loss = model(prior=prior)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        if i % 200 == 0:
-            print(f"Iter {i}: Loss = {loss.item():.4f}")
-    
-    weights = F.softmax(model.logits, dim=0)
-    mu1 = torch.sigmoid(model.raw_means[0]) * (prior[1] - prior[0]) + prior[0]
-    mu2 = torch.sigmoid(model.raw_means[1]) * (prior[1] - prior[0]) + prior[0]
-    sigma1 = F.softplus(model.raw_log_stds[0]) + 1e-3
-    sigma2 = F.softplus(model.raw_log_stds[1]) + 1e-3
-
-    return torch.Tensor([weights[0], mu1, sigma1,
-                         weights[1], mu2, sigma2],
-                        device=config['device'])
+def smooth_histogram(hist, kernel_size=7):
+    kernel = torch.ones(1, 1, kernel_size, device=hist.device) / kernel_size
+    hist = hist.view(1, 1, -1)
+    hist_smooth = F.conv1d(hist, kernel, padding=kernel_size // 2)
+    return hist_smooth.view(-1)
