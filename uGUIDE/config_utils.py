@@ -16,18 +16,18 @@ def create_config_uGUIDE(microstructure_model_name,
                          nf_state_dict_file='torch_nf.pt',
                          device=None,
                          use_MLP=True,
-                         nf_features=32,
+                         nf_features=None,
                          hidden_layers=[128, 64],
-                         flow_type='MAF',
                          n_flows=5,
                          learning_rate=1e-4,
                          scheduler_patience=10,
                          learning_rate_min=1e-5,
                          max_epochs=500,
                          n_epochs_no_change=25,
-                         voxel_batch_size=100,
+                         voxel_batch_size=256,
                          random_seed=None,
-                         nb_samples=10_000):
+                         nb_samples=10_000,
+                         num_threads=8):
     """
     Create a configuration file for the inference and microstructure parameters
     estimation.
@@ -81,7 +81,7 @@ def create_config_uGUIDE(microstructure_model_name,
             In this case, nf_features is set to the the size of the input 
             signal.
 
-    nf_features : int, default=32
+    nf_features : int, default= 2 times the size of theta
             Number of features extracted by the MLP. 
     
     hidden_layers : list, defaults=[128,64]
@@ -90,10 +90,6 @@ def create_config_uGUIDE(microstructure_model_name,
 
     n_flows : int, default=5
             Number of flows for the normalizing flow.
-
-    flow_type : str, default='MAF'
-            Type of normalizing flow to use. Options are 'MAF' (Masked 
-            Autoencoder Flow) or 'NSF' (Neural Spline Flow).
 
     learning_rate : float, default=1e-4
             Learning rate for the Adam optimizer.
@@ -114,8 +110,10 @@ def create_config_uGUIDE(microstructure_model_name,
             before stopping training. Good to set it around 2-3 times the 
             scheduler_patience.
 
-    voxel_batch_size : int, default=20
+    voxel_batch_size : int, default=256 or 1024
             Number of voxels to process in parallel during the inference.
+            If using the GPU, default is set to 256. If using the CPU, default 
+            is set to 1024.
 
     random_seed : int, optional
             Determines random number generation. Pass an int for reproducible
@@ -123,6 +121,10 @@ def create_config_uGUIDE(microstructure_model_name,
     
     nb_samples : int, default=10_000
             Number of samples drawn from the posterior distribution.
+
+    num_threads : int, default=8
+            Number of threads to use for parallel processing during the inference. 
+            Set between 4 and 8 for laptops, and 8 to 32 on servers.
 
     Returns
     -------
@@ -178,11 +180,12 @@ def create_config_uGUIDE(microstructure_model_name,
 
     config['use_MLP'] = use_MLP
     if config['use_MLP'] == True:
-        config['nf_features'] = nf_features
+        config[
+            'nf_features'] = nf_features if nf_features is not None else 2 * len(
+                prior)
     else:
         config['nf_features'] = config['size_x']
     config['hidden_layers'] = hidden_layers
-    config['flow_type'] = flow_type
     config['n_flows'] = n_flows
     config['learning_rate'] = learning_rate
     config['scheduler_patience'] = scheduler_patience
@@ -203,11 +206,12 @@ def create_config_uGUIDE(microstructure_model_name,
               'validation set. Suggested to set scheduler_patience <= '
               'n_epochs_no_change * 2 + 5.')
     config['n_epochs_no_change'] = n_epochs_no_change
-    config['voxel_batch_size'] = voxel_batch_size
+    config['voxel_batch_size'] = 256 if config['device'] == 'cuda' else 1024
     if random_seed is None:
         random_seed = random.randint(0, 10_000)
     config['random_seed'] = random_seed
     config['nb_samples'] = nb_samples
+    config['num_threads'] = num_threads
 
     return config
 

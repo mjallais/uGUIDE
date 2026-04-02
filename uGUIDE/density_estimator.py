@@ -3,32 +3,23 @@ from torch import nn
 import pyro.distributions.transforms as T
 
 
-def build_nf(input_dim, nf_features=32, n_flows=5, flow_type='MAF'):
+def build_nf(input_dim, nf_features=32, n_flows=5):
 
     transforms = []
     for t in range(n_flows):
-        if flow_type == 'MAF':
-            transform = T.conditional_affine_autoregressive(
-                input_dim=input_dim,
-                context_dim=nf_features,
-                hidden_dims=[64, 64],
-                log_scale_min_clip=-3.0,
-                log_scale_max_clip=1.5,
-                sigmoid_bias=2.0,
-                stable=True,
-            )
-        elif flow_type == 'NSF':
-            transforms.append(
-                T.conditional_spline_autoregressive(
-                    input_dim=input_dim,
-                    context_dim=nf_features,
-                    hidden_dims=[64, 64],
-                    count_bins=10,  # number of spline segments
-                    bound=8.0,
-                ))
+        transform = T.conditional_affine_autoregressive(
+            input_dim=input_dim,
+            context_dim=nf_features,
+            hidden_dims=[32, 32],
+            log_scale_min_clip=-3.0,
+            log_scale_max_clip=0.05,
+            sigmoid_bias=2.0,
+            stable=True,
+        )
         transforms.append(transform)
         transforms.append(T.Permute(torch.randperm(input_dim)))
 
+    transforms.append(T.SigmoidTransform())
     nf = T.ComposeTransformModule(parts=transforms)
 
     return nf

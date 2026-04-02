@@ -1,4 +1,3 @@
-import traceback
 from typing import Tuple, Optional, Dict
 
 import numpy as np
@@ -8,11 +7,12 @@ import torch.nn.functional as F
 import pyro.distributions as dist
 from scipy import optimize
 from time import time
+from tqdm import tqdm
 
 from uGUIDE.plot_utils import plot_posterior_distribution
 from uGUIDE.density_estimator import get_nf
 from uGUIDE.embedded_net import get_embedded_net
-from uGUIDE.normalization import load_normalizer
+from uGUIDE.normalization import load_normalizer, load_bounded_normalizer
 
 # import matplotlib.pyplot as plt
 # import torch.nn.functional as F
@@ -99,6 +99,7 @@ def estimate_microstructure(
         the posterior distributions (in %).
 
     """
+    torch.set_num_threads(config['num_threads'])
 
     device = config['device']
     x = x.to(device)
@@ -106,32 +107,36 @@ def estimate_microstructure(
     N = x.shape[
         0]  # Number of voxels to estimate microstructure parameters for
     D = config['size_theta']  # Number of microstructure parameters to estimate
+    S = config[
+        'nb_samples']  # Number of samples to draw from the posterior distribution for each voxel
 
-    # Load the normalizers
-    theta_normalizer = load_normalizer(config['folderpath'] /
-                                       config['theta_normalizer_file'])
+    # Load normalizers
+    theta_normalizer = load_bounded_normalizer(config['folderpath'] /
+                                               config['theta_normalizer_file'])
+    theta_normalizer = theta_normalizer.to(device)
     x_normalizer = load_normalizer(config['folderpath'] /
                                    config['x_normalizer_file'])
+    x_normalizer = x_normalizer.to(device)
 
-    # Load the trained model
-    embedded_net_state_dict = config['folderpath'] / config[
-        'embedder_state_dict_file']
-    nf_state_dict = config['folderpath'] / config['nf_state_dict_file']
+    # Load trained model
     embedded_net = get_embedded_net(input_dim=config['size_x'],
                                     output_dim=config['nf_features'],
                                     layer_1_dim=config['hidden_layers'][0],
                                     layer_2_dim=config['hidden_layers'][1],
-                                    pretrained_state=embedded_net_state_dict,
+                                    pretrained_state=config['folderpath'] /
+                                    config['embedder_state_dict_file'],
                                     use_MLP=config['use_MLP']).to(device)
     nf = get_nf(input_dim=config['size_theta'],
                 nf_features=config['nf_features'],
                 n_flows=config['n_flows'],
-                pretrained_state=nf_state_dict).to(device)
+                pretrained_state=config['folderpath'] /
+                config['nf_state_dict_file']).to(device)
 
     embedded_net.eval()
     nf.eval()
 
-    voxel_batch_size = config.get("voxel_batch_size", 50)
+    # Process voxels in batches to manage memory usage
+    voxel_batch_size = config.get("voxel_batch_size", 256)
 
     results = {
         "map": [],
@@ -142,48 +147,60 @@ def estimate_microstructure(
     }
 
     start_time = time()
+
+    pbar = tqdm(total=N, desc="Estimating microstructure parameters")
     for v_start in range(0, N, voxel_batch_size):
+
         v_end = min(v_start + voxel_batch_size, N)
 
-        if verbose:
-            print(f"Processing voxels {v_start+1} to {v_end} / {N}")
-
         x_batch = x[v_start:v_end]
+        B = x_batch.shape[0]  # Actual batch size (last batch might be smaller)
 
-        # Sample posterior
-        samples = sample_posterior_distribution(x_batch, config, nf,
-                                                embedded_net, x_normalizer,
-                                                theta_normalizer,
-                                                verbose)  # (B, S, D)
-        if samples.ndim == 2:  # (S, D) - for single voxel, add batch dimension
-            samples = samples.unsqueeze(0)
+        with torch.inference_mode():
+            x_norm = x_normalizer(x_batch)
+
+            embedding = embedded_net(x_norm)
+            embedding = torch.tanh(embedding)
+            embedding = F.layer_norm(embedding, embedding.shape[-1:])
+
+            # Sample posterior: one shot sampling from the normalizing flow in the normalized space
+            base_dist = dist.Normal(
+                torch.zeros((B, D), device=device),
+                torch.ones((B, D), device=device),
+            ).to_event(1)
+            transformed_dist = dist.ConditionalTransformedDistribution(
+                base_dist, nf)
+            cond_dist = transformed_dist.condition(embedding)
+
+            theta_norm_samples = cond_dist.sample((S, ))  # (S, B, D)
+            theta_norm_samples = theta_norm_samples.permute(1, 0,
+                                                            2)  # (B, S, D)
+
+            # Inverse normalization
+            theta_samples = theta_normalizer.inverse(
+                theta_norm_samples)  # (B, S, D)
+
+            if theta_samples.ndim == 2:  # (S, D) - for single voxel, add batch dimension
+                theta_samples = theta_samples.unsqueeze(0)
 
         if postprocessing is not None:
-            B = samples.shape[0]
-            samples = postprocessing(samples.reshape(-1, D), config)
-            samples = samples.view(B, config["nb_samples"], -1)
+            B = theta_samples.shape[0]
+            theta_samples = postprocessing(theta_samples.reshape(-1, D),
+                                           config)
+            theta_samples = theta_samples.view(B, S, -1)
 
         # Estimate MAP, degeneracy, uncertainty and ambiguity
         map_b, mask_b, degeneracy_mask_b, uncertainty_b, ambiguity_b = estimate_theta(
-            samples, config, postprocessing is not None)
+            theta_samples, config, postprocessing is not None)
 
-        results["map"].append(map_b.detach().cpu())
-        results["mask"].append(mask_b.detach().cpu())
-        results["degeneracy"].append(degeneracy_mask_b.detach().cpu())
-        results["uncertainty"].append(uncertainty_b.detach().cpu())
-        results["ambiguity"].append(ambiguity_b.detach().cpu())
+        results["map"].append(map_b.cpu())
+        results["mask"].append(mask_b.cpu())
+        results["degeneracy"].append(degeneracy_mask_b.cpu())
+        results["uncertainty"].append(uncertainty_b.cpu())
+        results["ambiguity"].append(ambiguity_b.cpu())
+        pbar.update(B)
 
-        print("Before deleting samples and emptying cache")
-        print(torch.cuda.memory_allocated() / 1e9, "GB allocated")
-        print(torch.cuda.memory_reserved() / 1e9, "GB reserved")
-
-        del samples
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-
-        print("After deleting samples and emptying cache")
-        print(torch.cuda.memory_allocated() / 1e9, "GB allocated")
-        print(torch.cuda.memory_reserved() / 1e9, "GB reserved")
+    pbar.close()
 
     # Concatenate results from all batches
     map = torch.cat(results["map"], dim=0)
@@ -193,10 +210,10 @@ def estimate_microstructure(
     ambiguity = torch.cat(results["ambiguity"], dim=0)
 
     end_time = time()
-    computation_time = end_time - start_time  # in seconds
 
     # Verbose logging
     if verbose:
+        computation_time = end_time - start_time  # in seconds
 
         keys = (list(config["prior_postprocessing"].keys())
                 if postprocessing else list(config["prior"].keys()))
@@ -233,44 +250,72 @@ def estimate_microstructure(
             idx = list(range(min(plot_max_voxels, N)))
 
         x_idx = x[idx]
-        samples = sample_posterior_distribution(x_idx, config, nf,
-                                                embedded_net, x_normalizer,
-                                                theta_normalizer,
-                                                verbose)  # (B, S, D)
-        if samples.ndim == 2:  # (S, D) - for single voxel, add batch dimension
-            samples = samples.unsqueeze(0)
+        B = x_idx.shape[0]
+
+        with torch.inference_mode():
+            x_norm = x_normalizer(x_idx)
+
+            embedding = embedded_net(x_norm)
+            embedding = torch.tanh(embedding)
+            embedding = F.layer_norm(embedding, embedding.shape[-1:])
+
+            # Sample posterior: one shot sampling from the normalizing flow in the normalized space
+            base_dist = dist.Normal(
+                torch.zeros((B, D), device=device),
+                torch.ones((B, D), device=device),
+            ).to_event(1)
+            transformed_dist = dist.ConditionalTransformedDistribution(
+                base_dist, nf)
+            cond_dist = transformed_dist.condition(embedding)
+
+            theta_norm_samples = cond_dist.sample((S, ))  # (S, B, D)
+            theta_norm_samples = theta_norm_samples.permute(1, 0,
+                                                            2)  # (B, S, D)
+
+            # Inverse normalization
+            theta_samples = theta_normalizer.inverse(
+                theta_norm_samples)  # (B, S, D)
+
+            if theta_samples.ndim == 2:  # (S, D) - for single voxel, add batch dimension
+                theta_samples = theta_samples.unsqueeze(0)
+
+        if theta_samples.ndim == 2:  # (S, D) - for single voxel, add batch dimension
+            theta_samples = theta_samples.unsqueeze(0)
 
         if postprocessing is not None:
-            B = samples.shape[0]
-            samples = postprocessing(samples.reshape(-1, D), config)
-            samples = samples.view(B, config["nb_samples"], -1)
+            B = theta_samples.shape[0]
+            theta_samples = postprocessing(theta_samples.reshape(-1, D),
+                                           config)
+            theta_samples = theta_samples.view(B, config["nb_samples"], -1)
 
-        for n in range(samples.shape[0]):
+        for n in range(theta_samples.shape[0]):
+            folder_plot = config['folderpath'] / 'posterior_distributions'
+            folder_plot.mkdir(exist_ok=True, parents=True)
+
             if postprocessing is None:
                 plot_posterior_distribution(
-                    samples[n].detach().cpu(),
+                    theta_samples[n].detach().cpu(),
                     config,
                     postprocessing=False,
                     ground_truth=None
                     if theta_gt is None else theta_gt[n].detach().cpu(),
-                    fig_file=
-                    f'posterior_distributions/posterior_distribution_voxel_{n}.png'
-                )
+                    idx=n,
+                    fig_file=folder_plot / 'posterior_distribution')
             else:
                 plot_posterior_distribution(
-                    samples[n].detach().cpu(),
+                    theta_samples[n].detach().cpu(),
                     config,
                     postprocessing=True,
                     ground_truth=None
                     if theta_gt is None else theta_gt[n].detach().cpu(),
-                    fig_file=
-                    f'posterior_distributions/posterior_distribution_voxel_{n}_postprocessing.png'
-                )
+                    idx=n,
+                    fig_file=folder_plot /
+                    'posterior_distribution_postprocessing')
 
     return map, mask, degeneracy_mask, uncertainty, ambiguity
 
 
-def sample_posterior_distribution(
+def sample_posterior_distribution_rejection_sampling(
     x: torch.Tensor,
     config: Dict,
     nf: nn.Module,
@@ -280,7 +325,7 @@ def sample_posterior_distribution(
     verbose: bool = False,
 ) -> torch.Tensor:
     """
-    Batched rejection sampling from normalizing flow.
+    Batched rejection sampling from normalizing flow (used in old version).
 
     Parameters
     ----------
@@ -485,7 +530,7 @@ def estimate_theta(
 
     # Initialize map with mean values, will be updated for non-degenerate cases
     theta_mean = samples.mean(dim=1)  # (B, D)
-    map = theta_mean.clone()
+    map_est = theta_mean.clone()
 
     # Mask for parameters where the mean is outside the prior bounds (estimation failure)
     mask = (theta_mean >= prior_min) & (theta_mean <= prior_max)
@@ -530,9 +575,8 @@ def estimate_theta(
 
             degeneracy_mask[b, d] = is_degenerate(param_gauss_t, bounds,
                                                   config)
-
-            map[b, d] = estimate_max_a_posteriori(param_gauss_t, bounds,
-                                                  config)
+            map_est[b, d] = estimate_max_a_posteriori(param_gauss_t, bounds,
+                                                      config)
 
             if not degeneracy_mask[b, d]:
                 ambiguity[b, d] = estimate_ambiguity(param_gauss_t, bounds,
@@ -544,7 +588,7 @@ def estimate_theta(
     uncertainty[degeneracy_mask] = 100
     ambiguity[degeneracy_mask] = 100
 
-    return map, mask, degeneracy_mask, uncertainty, ambiguity
+    return map_est, mask, degeneracy_mask, uncertainty, ambiguity
 
 
 def is_degenerate(param_gauss, prior_bounds, config, num_points=1000):

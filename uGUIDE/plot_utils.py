@@ -59,7 +59,7 @@ def plot_posterior_distribution(samples,
     fig.suptitle(f'Voxel {idx}')
     fig.tight_layout()
     plt.show()
-    fig.savefig(config['folderpath'] / f"{fig_file}_voxel_{idx}.png")
+    fig.savefig(f"{fig_file}_voxel_{idx}.png")
     plt.close()
 
     return
