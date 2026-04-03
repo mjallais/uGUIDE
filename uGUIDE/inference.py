@@ -252,4 +252,4 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
         plt.title("LR vs Loss during training")
         fig.savefig(config['folderpath'] / 'loss_training.png')
 
-    return
+    return best_val_loss

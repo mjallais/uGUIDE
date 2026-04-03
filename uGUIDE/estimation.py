@@ -14,9 +14,6 @@ from uGUIDE.density_estimator import get_nf
 from uGUIDE.embedded_net import get_embedded_net
 from uGUIDE.normalization import load_normalizer, load_bounded_normalizer
 
-# import matplotlib.pyplot as plt
-# import torch.nn.functional as F
-
 
 def estimate_microstructure(
     x: torch.Tensor,
