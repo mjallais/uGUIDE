@@ -34,17 +34,18 @@
 <h1>uGUIDE.estimate_microstructure<a class="headerlink" href="#uguide-estimate-microstructure" title="Permalink to this heading">¶</a></h1>
 <dl class="py function">
 <dt class="sig sig-object py" id="uGUIDE.estimate_microstructure">
-<span class="sig-prename descclassname"><span class="pre">uGUIDE.</span></span><span class="sig-name descname"><span class="pre">estimate_microstructure</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">postprocessing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">voxel_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">theta_gt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#uGUIDE.estimate_microstructure" title="Permalink to this definition">¶</a></dt>
-<dd><p>Estimate microstructure parameters given an observed diffusion MRI signal.
+<span class="sig-prename descclassname"><span class="pre">uGUIDE.</span></span><span class="sig-name descname"><span class="pre">estimate_microstructure</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">postprocessing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_max_voxels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_random</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">theta_gt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#uGUIDE.estimate_microstructure" title="Permalink to this definition">¶</a></dt>
+<dd><p>Estimate microstructure parameters given observed diffusion MRI signals.
 The posterior distributions are obtained by sampling from the normalizing 
 flow. If a problem occurs, mask is set to False for the corresponding 
-parameter(s). Then the posterior distribution is defined as degenerate or not.
-Finally this function extracts and returns the maximum-a-posteriori, the
-uncertainty and the ambiguity from the estimated posterior distributions.</p>
+parameter(s). Then the posterior distribution is defined as degenerate or
+not. Finally this function extracts and returns the maximum-a-posteriori, 
+the uncertainty and the ambiguity from the estimated posterior
+distributions for each voxel.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><dl class="simple">
-<dt><strong>x</strong><span class="classifier">array, shape (x_size,)</span></dt><dd><p>Observed diffusion MRI signal. Its size must be identical to the signals
+<dt><strong>x</strong><span class="classifier">torch.Tensor, shape (N_voxels, config[‘size_x’])</span></dt><dd><p>Observed diffusion MRI signal. Its size must be identical to the signals
 used for training (i.e. <code class="docutils literal notranslate"><span class="pre">config['size_x']</span></code>)</p>
 </dd>
 <dt><strong>config</strong><span class="classifier">dict</span></dt><dd><p>μGUIDE configuration.</p>
@@ -55,12 +56,20 @@ instead during training. This function allows to convert those surrogate
 parameters into the model microstructure parameters. If set to None, no
 conversion is performed.</p>
 </dd>
-<dt><strong>voxel_id</strong><span class="classifier">int, default=0</span></dt><dd><p>ID of the current voxel. Used to set the name when saving the posterior
-distribution plots.</p>
+<dt><strong>verbose</strong><span class="classifier">bool, default=False</span></dt><dd><p>Whether to print messages about the estimation process, especially 
+invalid cases where the estimation did not work.</p>
 </dd>
 <dt><strong>plot</strong><span class="classifier">bool, default=True</span></dt><dd><p>Whether to save the posterior distributions.</p>
 </dd>
-<dt><strong>theta_gt</strong><span class="classifier">ndarray, optional</span></dt><dd><p>Ground truth value corresponding to the observed signal x, whith size 
+<dt><strong>plot_max_voxels</strong><span class="classifier">int, default=5</span></dt><dd><p>Maximum number of voxels to plot the posterior distributions for. If the
+number of voxels to estimate is higher than this number, only a random
+subset of voxels will be plotted if plot_random is set to True. If
+plot_random is set to False, the first plot_max_voxels will be plotted.</p>
+</dd>
+<dt><strong>plot_random</strong><span class="classifier">bool, default=True</span></dt><dd><p>Whether to randomly select the voxels to plot the posterior distributions
+for when the number of voxels to estimate is higher than plot_max_voxels.</p>
+</dd>
+<dt><strong>theta_gt</strong><span class="classifier">torch.Tensor, optional</span></dt><dd><p>Ground truth value corresponding to the observed signal x, whith size 
 (config[‘size_theta’],). Used when testing on simulations. Adds a
 vertical dashed black line on the plotted posterior distributions.</p>
 </dd>
@@ -68,19 +77,19 @@ vertical dashed black line on the plotted posterior distributions.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><dl class="simple">
-<dt><strong>map</strong><span class="classifier">ndarray, shape (config[‘size_theta’],)</span></dt><dd><p>Maximum-a-posteriori estimated for each microstructure parameter from
+<dt><strong>map</strong><span class="classifier">torch.Tensor, shape (N, size_theta)</span></dt><dd><p>Maximum-a-posteriori estimated for each microstructure parameter from
 the posterior distributions.</p>
 </dd>
-<dt><strong>mask</strong><span class="classifier">ndarray, shape (config[‘size_theta’],)</span></dt><dd><p>Default to <code class="docutils literal notranslate"><span class="pre">True</span></code>. Set to False if a parameter estimation did not
+<dt><strong>mask</strong><span class="classifier">torch.Tensor, shape (N, size_theta)</span></dt><dd><p>Default to <code class="docutils literal notranslate"><span class="pre">True</span></code>. Set to False if a parameter estimation did not
 work.</p>
 </dd>
-<dt><strong>degeneracy_mask</strong><span class="classifier">ndarray, shape (config[‘size_theta’],)</span></dt><dd><p>Set to <code class="docutils literal notranslate"><span class="pre">True</span></code> if a posterior distribution is defined as degenerate.
+<dt><strong>degeneracy_mask</strong><span class="classifier">torch.Tensor, shape (N, size_theta)</span></dt><dd><p>Set to <code class="docutils literal notranslate"><span class="pre">True</span></code> if a posterior distribution is defined as degenerate.
 <code class="docutils literal notranslate"><span class="pre">False</span></code> otherwise.</p>
 </dd>
-<dt><strong>uncertainty</strong><span class="classifier">ndarray, shape (config[‘size_theta’],)</span></dt><dd><p>Uncertainty measure estimated for each microstructure parameter from
+<dt><strong>uncertainty</strong><span class="classifier">torch.Tensor, shape (N, size_theta)</span></dt><dd><p>Uncertainty measure estimated for each microstructure parameter from
 the posterior distributions (in %).</p>
 </dd>
-<dt><strong>ambiguity</strong><span class="classifier">ndarray, shape (config[‘size_theta’],)</span></dt><dd><p>Ambiguity measure estimated for each microstructure parameter from
+<dt><strong>ambiguity</strong><span class="classifier">torch.Tensor, shape (N, size_theta)</span></dt><dd><p>Ambiguity measure estimated for each microstructure parameter from
 the posterior distributions (in %).</p>
 </dd>
 </dl>
