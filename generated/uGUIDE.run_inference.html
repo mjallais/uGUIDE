@@ -13,8 +13,6 @@
     <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="uGUIDE.estimate_microstructure" href="uGUIDE.estimate_microstructure.html" />
-    <link rel="prev" title="uGUIDE.load_config_uGUIDE" href="uGUIDE.load_config_uGUIDE.html" />
    
   <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
   
@@ -33,30 +31,6 @@
             
   <section id="uguide-run-inference">
 <h1>uGUIDE.run_inference<a class="headerlink" href="#uguide-run-inference" title="Permalink to this heading">¶</a></h1>
-<dl class="py function">
-<dt class="sig sig-object py" id="uGUIDE.run_inference">
-<span class="sig-prename descclassname"><span class="pre">uGUIDE.</span></span><span class="sig-name descname"><span class="pre">run_inference</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">theta</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_loss</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_state</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#uGUIDE.run_inference" title="Permalink to this definition">¶</a></dt>
-<dd><p>Run inference given a training dataset.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><dl class="simple">
-<dt><strong>theta</strong><span class="classifier">ndarray, shape (nb_simulations, config[‘size_theta’])</span></dt><dd><p>Microstructure parameters used for the training.</p>
-</dd>
-<dt><strong>x</strong><span class="classifier">ndarray, shape (nb_simulations, config[‘size_x’])</span></dt><dd><p>Observed diffusion MRI signals corresponding to the theta.</p>
-</dd>
-<dt><strong>config</strong><span class="classifier">dict</span></dt><dd><p>μGUIDE configuration.</p>
-</dd>
-<dt><strong>plot_loss</strong><span class="classifier">bool, default=True</span></dt><dd><p>Plot the validation loss evolution during training.</p>
-</dd>
-<dt><strong>load_state: bool, default=False</strong></dt><dd><p>If training has already been performed, load the state
-of the neural networks saved if set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, and continue training.
-Otherwise, start a new inference.</p>
-</dd>
-</dl>
-</dd>
-</dl>
-</dd></dl>
-
 </section>
 
 
@@ -76,30 +50,15 @@ Otherwise, start a new inference.</p>
 
 
 <h3>Navigation</h3>
-<ul class="current">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="../usage.html">Usage</a></li>
-<li class="toctree-l1 current"><a class="reference internal" href="../api.html">API</a><ul class="current">
-<li class="toctree-l2"><a class="reference internal" href="../api.html#guide-configuration">μGUIDE configuration</a></li>
-<li class="toctree-l2 current"><a class="reference internal" href="../api.html#inference">Inference</a><ul class="current">
-<li class="toctree-l3 current"><a class="current reference internal" href="#">uGUIDE.run_inference</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#uGUIDE.run_inference"><code class="docutils literal notranslate"><span class="pre">run_inference()</span></code></a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="../api.html#microstructure-parameters-estimation">Microstructure parameters estimation</a></li>
-</ul>
-</li>
+<li class="toctree-l1"><a class="reference internal" href="../api.html">API</a></li>
 </ul>
 
 <div class="relations">
 <h3>Related Topics</h3>
 <ul>
   <li><a href="../index.html">Documentation overview</a><ul>
-  <li><a href="../api.html">API</a><ul>
-      <li>Previous: <a href="uGUIDE.load_config_uGUIDE.html" title="previous chapter">uGUIDE.load_config_uGUIDE</a></li>
-      <li>Next: <a href="uGUIDE.estimate_microstructure.html" title="next chapter">uGUIDE.estimate_microstructure</a></li>
-  </ul></li>
   </ul></li>
 </ul>
 </div>
