@@ -13,9 +13,9 @@ from uGUIDE.embedded_net import get_embedded_net
 from uGUIDE.normalization import get_normalizer, save_normalizer, get_bounded_normalizer, save_bounded_normalizer
 
 
-def run_inference(theta, x, config, plot_loss=True, load_state=False):
+def run_training(theta, x, config, plot_loss=True, load_state=False):
     """
-    Run inference given a training dataset.
+    Run training given a training dataset.
 
     Parameters
     ----------

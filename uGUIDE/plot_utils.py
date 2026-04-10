@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy import stats
 
 
 def plot_posterior_distribution(samples,
