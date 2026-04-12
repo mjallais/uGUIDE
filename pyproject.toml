@@ -16,7 +16,7 @@ classifiers = [
     "License :: OSI Approved :: BSD (3-clause) License",
     "Operating System :: OS Independent",
 ]
-dependencies = ["numpy", "torch", "scipy", "pandas", "tqdm", "pyro-ppl", "matplotlib"]
+dependencies = ["numpy", "torch", "scipy", "pandas", "tqdm", "pyro-ppl", "matplotlib", "joblib"]
 
 [project.urls]
 "Homepage" = "https://github.com/mjallais/uGUIDE"

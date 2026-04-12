@@ -24,7 +24,7 @@ def create_config_uGUIDE(microstructure_model_name,
                          learning_rate_min=1e-5,
                          max_epochs=500,
                          n_epochs_no_change=25,
-                         voxel_batch_size=256,
+                         voxel_batch_size=128,
                          random_seed=None,
                          nb_samples=10_000,
                          num_threads=8):
@@ -110,10 +110,8 @@ def create_config_uGUIDE(microstructure_model_name,
             before stopping training. Good to set it around 2-3 times the 
             scheduler_patience.
 
-    voxel_batch_size : int, default=256 or 1024
+    voxel_batch_size : int, default=128
             Number of voxels to process in parallel during the inference.
-            If using the GPU, default is set to 256. If using the CPU, default 
-            is set to 1024.
 
     random_seed : int, optional
             Determines random number generation. Pass an int for reproducible
@@ -123,8 +121,7 @@ def create_config_uGUIDE(microstructure_model_name,
             Number of samples drawn from the posterior distribution.
 
     num_threads : int, default=8
-            Number of threads to use for parallel processing during the inference. 
-            Set between 4 and 8 for laptops, and 8 to 32 on servers.
+            Number of threads to use for parallel processing during the inference.
 
     Returns
     -------
@@ -206,7 +203,7 @@ def create_config_uGUIDE(microstructure_model_name,
               'validation set. Suggested to set scheduler_patience <= '
               'n_epochs_no_change * 2 + 5.')
     config['n_epochs_no_change'] = n_epochs_no_change
-    config['voxel_batch_size'] = 256 if config['device'] == 'cuda' else 1024
+    config['voxel_batch_size'] = voxel_batch_size
     if random_seed is None:
         random_seed = random.randint(0, 10_000)
     config['random_seed'] = random_seed

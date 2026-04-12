@@ -1,3 +1,4 @@
+import traceback
 from typing import Tuple, Optional, Dict
 
 import numpy as np
@@ -8,6 +9,7 @@ import pyro.distributions as dist
 from scipy import optimize
 from time import time
 from tqdm import tqdm
+from joblib import Parallel, delayed
 
 from uGUIDE.plot_utils import plot_posterior_distribution
 from uGUIDE.density_estimator import get_nf
@@ -106,6 +108,8 @@ def estimate_microstructure(
     D = config['size_theta']  # Number of microstructure parameters to estimate
     S = config[
         'nb_samples']  # Number of samples to draw from the posterior distribution for each voxel
+
+    # print(f'B = {N}, D = {D}, S = {S}')
 
     # Load normalizers
     theta_normalizer = load_bounded_normalizer(config['folderpath'] /
@@ -247,6 +251,7 @@ def estimate_microstructure(
             idx = list(range(min(plot_max_voxels, N)))
 
         x_idx = x[idx]
+        theta_gt = None if theta_gt is None else theta_gt[idx]
         B = x_idx.shape[0]
 
         with torch.inference_mode():
@@ -543,41 +548,22 @@ def estimate_theta(
 
     # Gaussian fitting to determine degeneracy and update MAP and ambiguity
     # for non-degenerate cases
-    for b in range(B):
-        # Loop only over non-masked/valid parameters
-        for d in torch.where(mask[b])[0]:
+    samples_cpu = samples.detach().cpu().numpy(
+    )  # Move to CPU for parallel processing with scipy
+    valid_indices = torch.nonzero(mask, as_tuple=False).cpu().numpy(
+    )  # Indices of parameters that are not masked, to process in parallel
+    prior_bounds = [(prior[p][0], prior[p][1]) for p in prior.keys()]
 
-            # Compute histogram for the d-th parameter of the b-th voxel to
-            # check for degeneracy
-            hist, edges = _histogram_1d(samples[b, :, d],
-                                        bins=80,
-                                        density=True)
-            hist_smooth = smooth_histogram(hist, kernel_size=7)
-            x_hist = (edges[:-1] + edges[1:]) / 2  # Midpoints of bins
+    results = Parallel(n_jobs=config['num_threads'], backend="threading")(
+        delayed(process_one_voxel)(samples_cpu[b, :, d], b, d, prior_bounds[d])
+        for b, d in valid_indices)
 
-            # Fit two Gaussians to the histogram using scipy (CPU)
-            param_gauss = fit_two_gaussians(
-                x_hist.cpu().numpy(),
-                hist_smooth.cpu().numpy(),
-            )
-
-            # Failed fit: set mask to False and skip degeneracy and ambiguity estimation
-            if param_gauss[0] == 0 and param_gauss[3] == 0:
-                mask[b, d] = False
-                continue
-
-            param_gauss_t = torch.tensor(param_gauss, device=device)
-
-            bounds = prior[list(prior)[d]]
-
-            degeneracy_mask[b, d] = is_degenerate(param_gauss_t, bounds,
-                                                  config)
-            map_est[b, d] = estimate_max_a_posteriori(param_gauss_t, bounds,
-                                                      config)
-
-            if not degeneracy_mask[b, d]:
-                ambiguity[b, d] = estimate_ambiguity(param_gauss_t, bounds,
-                                                     config)
+    for b, d, map_est_vox, mask_vox, degeneracy_mask_vox, ambiguity_vox in results:
+        if mask_vox == True:
+            map_est[b, d] = map_est_vox
+            mask[b, d] = mask_vox
+            degeneracy_mask[b, d] = degeneracy_mask_vox
+            ambiguity[b, d] = ambiguity_vox
 
     # Set uncertainty and ambiguity to 100% for degenerate cases and for masked/invalid cases
     uncertainty[~mask] = 100
@@ -588,65 +574,76 @@ def estimate_theta(
     return map_est, mask, degeneracy_mask, uncertainty, ambiguity
 
 
-def is_degenerate(param_gauss, prior_bounds, config, num_points=1000):
-    """
-    Determines degeneracy of a Gaussian mixture by checking for multiple 
-    significant peaks.
+def process_one_voxel(samples_1d, b, d, prior_bounds):
+    hist, edges = np.histogram(samples_1d, bins=80, density=True)
+    hist_smooth = smooth_histogram(hist, kernel_size=7)
+    x_hist = (edges[:-1] + edges[1:]) / 2  # Midpoints of bins
 
-    Parameters
-    ----------
-    param_gauss (torch.Tensor):
-        Tensor of Gaussian parameters. Shape (6,) corresponding to 
-        (f1, mu1, sigma1, f2, mu2, sigma2).
-    prior_bounds (torch.Tensor): 
-        Tensor of min/max bounds, shape (num_params, 2).
-    num_points (int):
-        Number of points for evaluating the Gaussians.
+    # Fit two Gaussians to the histogram using scipy (CPU)
+    param_gauss = fit_two_gaussians(x_hist, hist_smooth)
 
-    Returns
-    --------
-    torch.Tensor
-        Boolean tensor indicating degeneracy for each parameter, shape (num_params,).
-    """
-    device = config['device']
+    # Failed fit: set mask to False and skip degeneracy and ambiguity estimation
+    if param_gauss[0] == 0 and param_gauss[3] == 0:
+        return b, d, None, False, None, None
 
-    degenerate = torch.zeros((), dtype=torch.bool, device=device)
+    # param_gauss_t = torch.tensor(param_gauss)
 
-    x = torch.linspace(prior_bounds[0],
-                       prior_bounds[1],
-                       num_points,
-                       device=device)
-    der = derivative_two_gaussians(x, *param_gauss)
+    degeneracy_mask_vox = is_degenerate(param_gauss, prior_bounds)
+    map_est_vox = estimate_max_a_posteriori(param_gauss, prior_bounds)
 
-    sign_d = sign_der(der)
-    idx_der = torch.nonzero(sign_d[:-1] != sign_d[1:],
-                            as_tuple=False).flatten() + 1
+    if not degeneracy_mask_vox:
+        ambiguity_vox = estimate_ambiguity(param_gauss, prior_bounds)
+    else:
+        ambiguity_vox = 100.0
+
+    return b, d, map_est_vox.item(), True, degeneracy_mask_vox, ambiguity_vox
+
+
+def is_degenerate(param_gauss, prior_bounds, num_points=1000):
+    degenerate = False
+
+    x = np.linspace(prior_bounds[0], prior_bounds[1], num_points)
+    der = derivative_two_gaussians(x, param_gauss[0], param_gauss[1],
+                                   param_gauss[2], param_gauss[3],
+                                   param_gauss[4], param_gauss[5])
+    try:
+        sign_d = sign_der(der)
+    except Exception:
+        print('Error in sign derivative computation.')
+        print(traceback.format_exc())
+        print(f'der={der}')
+        return degenerate
+    idx_der = np.where(sign_d[:-1] != sign_d[1:])[0] + 1
 
     # If idx_der contain two consecutive numbers, means it is a suprious spike.
     # Do not take it into account
-    if idx_der.numel() > 1:
-        diffs = idx_der[1:] - idx_der[:-1]
-        consecutive_with_prev = torch.cat(
-            (torch.zeros(1, dtype=torch.bool, device=device), diffs == 1))
-        consecutive_with_next = torch.cat(
-            (diffs == 1, torch.zeros(1, dtype=torch.bool, device=device)))
-        keep = ~(consecutive_with_prev | consecutive_with_next)
-        idx_der = idx_der[keep]
+    if len(idx_der) > 1:
+        der_to_keep = []
+        for i_d, d in enumerate(idx_der):
+            before = False
+            after = False
+            if i_d != 0:  # if not first one
+                if d - 1 == idx_der[i_d -
+                                    1]:  # consecutive with the one before
+                    before = True
+            if i_d != len(idx_der) - 1:  # not the last one
+                if d + 1 == idx_der[i_d + 1]:  # consecutive with the one after
+                    after = True
+            if after == False and before == False:
+                der_to_keep.append(d)
+        idx_der = der_to_keep
 
-    if idx_der.numel() > 1:
+    if len(idx_der) > 1:
         # If distance between the mean of the two gaussians < sum of std,
         # then the two are too close to distinguish them. Not degenerate
-        dist_mean = torch.abs(param_gauss[1] - param_gauss[4])
+        dist_mean = np.abs(param_gauss[1] - param_gauss[4])
         if dist_mean > param_gauss[2] + param_gauss[5]:
-            degenerate = torch.ones((), dtype=torch.bool, device=device)
+            degenerate = True
 
     return degenerate
 
 
-def estimate_max_a_posteriori(param_gauss,
-                              prior_bounds,
-                              config,
-                              num_points=1000):
+def estimate_max_a_posteriori(param_gauss, prior_bounds, num_points=1000):
     """
     Estimates the maximum-a-posteriori (MAP) from the parameters of a Gaussian
     mixture by evaluating the mixture on a grid and finding the maximum.
@@ -664,20 +661,17 @@ def estimate_max_a_posteriori(param_gauss,
     torch.Tensor
         Estimated MAP value for each parameter, shape (num_params,).
     """
-    x = torch.linspace(prior_bounds[0],
-                       prior_bounds[1],
-                       num_points,
-                       device=config['device'])
+    x = np.linspace(prior_bounds[0], prior_bounds[1], num_points)
     y = two_gaussians(x, *param_gauss)
-    map = x[torch.argmax(y)]
+    map = x[np.argmax(y)]
     # check if multiple values in map (i.e. multiple peaks with same max value)
-    if map.numel() > 1:
-        print(f'Multiple peaks with same max value found. map = {map}')
+    if map.size > 1:
+        # print(f'Multiple peaks with same max value found. map = {map}')
         map = map[0]  # Take the first of the peaks' locations as MAP estimate
     return map
 
 
-def estimate_ambiguity(param_gauss, prior_bounds, config, num_points=1000):
+def estimate_ambiguity(param_gauss, prior_bounds, num_points=1000):
     """
     Computes ambiguity as the percentage of the domain where the posterior is above half-max.
     Vectorized with PyTorch.
@@ -688,8 +682,6 @@ def estimate_ambiguity(param_gauss, prior_bounds, config, num_points=1000):
         Tensor of Gaussian parameters, shape (num_params, 6).
     prior_bounds (torch.Tensor)
         Tensor of min/max bounds, shape (num_params, 2).
-    config (dict)
-        Configuration dictionary.
     num_points (int)
         Number of points for evaluating the Gaussians.
 
@@ -698,34 +690,9 @@ def estimate_ambiguity(param_gauss, prior_bounds, config, num_points=1000):
     torch.Tensor
         Ambiguity measure for each parameter, shape (num_params,).
     """
-    # x = np.linspace(prior_bounds[0], prior_bounds[1], num_points)
-    #
-    # # ambiguity = (len(np.where(y > y.max()/2)[0]) / x.shape[0]) * 100
-    # # return ambiguity
-    # return (np.count_nonzero(y > y.max() / 2) / x.shape[0]) * 100
-
-    x = torch.linspace(prior_bounds[0],
-                       prior_bounds[1],
-                       num_points,
-                       device=config['device'])
+    x = np.linspace(prior_bounds[0], prior_bounds[1], num_points)
     y = two_gaussians(x, *param_gauss)
-
-    half_max = y.max(dim=0, keepdim=True)[0] / 2
-    ambiguity = (torch.sum(y > half_max, dim=0).float() /
-                 num_points) * 100  # Percentage of domain above half-max
-    return ambiguity
-
-
-def one_gaussian(x, f, mu, sigma):
-    sigma = torch.clamp(sigma, min=1e-6)
-    SQRT_2PI = torch.sqrt(
-        torch.tensor(2.0 * torch.pi, dtype=torch.float32, device=x.device))
-    return f * 1 / (sigma * SQRT_2PI) * torch.exp(-1 / 2 *
-                                                  ((x - mu) / sigma)**2)
-
-
-def two_gaussians(x, f1, mu1, sigma1, f2, mu2, sigma2):
-    return one_gaussian(x, f1, mu1, sigma1) + one_gaussian(x, f2, mu2, sigma2)
+    return (np.count_nonzero(y > y.max() / 2) / num_points) * 100
 
 
 def derivative_one_gaussian(x, f, mu, sigma):
@@ -738,84 +705,26 @@ def derivative_two_gaussians(x, f1, mu1, sigma1, f2, mu2, sigma2):
 
 
 def sign_der(derivative):
-    s = torch.sign(derivative)
-    if s.numel() == 0:
+    s = np.sign(derivative)
+    if s.size == 0:
         return s
 
     if s[0] == 0:
-        nonzero = torch.nonzero(s != 0, as_tuple=False)
-        if nonzero.numel() == 0:
-            return s
-        s[0] = s[nonzero[0, 0]]
-
-    for i in range(1, s.shape[0]):
+        s[0] = s[s != 0][0]
+    for i in np.arange(1, s.shape[0]):
         if s[i] == 0:
             s[i] = s[i - 1]
     return s
 
 
-def _histogram_1d(x: torch.Tensor,
-                  bins: int = 80,
-                  density: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    CUDA-safe 1D histogram.
-    Uses torch.histc (CUDA-supported) and returns (hist, bin_edges) on x.device.
-    """
-    device = x.device
-    x1 = x.detach().flatten().to(torch.float32)
-    if x1.numel() == 0:
-        hist = torch.zeros((bins, ), device=device, dtype=torch.float32)
-        bin_edges = torch.linspace(0.0,
-                                   1.0,
-                                   bins + 1,
-                                   device=device,
-                                   dtype=torch.float32)
-        return hist, bin_edges
-
-    x_min = torch.min(x1)
-    x_max = torch.max(x1)
-    # histc requires min < max; if all values equal, widen slightly
-    if torch.isclose(x_min, x_max):
-        eps = torch.tensor(1e-6, device=device, dtype=torch.float32)
-        x_min = x_min - eps
-        x_max = x_max + eps
-
-    try:
-        # Fast path: histc (usually CUDA-supported)
-        hist = torch.histc(x1, bins=bins, min=float(x_min), max=float(x_max))
-        bin_edges = torch.linspace(float(x_min),
-                                   float(x_max),
-                                   bins + 1,
-                                   device=device,
-                                   dtype=torch.float32)
-
-        if density:
-            bin_width = (bin_edges[1] - bin_edges[0]).clamp_min(1e-12)
-            hist_sum = hist.sum().clamp_min(1e-12)
-            hist = hist / (hist_sum * bin_width)
-
-        return hist, bin_edges
-
-    except Exception as e:
-        # Fallback: CPU histogram, then move results back to original device.
-        x_cpu = x1.detach().to("cpu")
-        hist_cpu, bin_edges_cpu = torch.histogram(x_cpu,
-                                                  bins=bins,
-                                                  density=density)
-        hist = hist_cpu.to(device)
-        bin_edges = bin_edges_cpu.to(device)
-        return hist, bin_edges
-
-
-def one_gaussian_np(x, f, mu, sigma):
+def one_gaussian(x, f, mu, sigma):
     return f * 1 / (sigma *
                     (np.sqrt(2 * np.pi))) * np.exp(-1 / 2 *
                                                    ((x - mu) / sigma)**2)
 
 
-def two_gaussians_np(x, f1, mu1, sigma1, f2, mu2, sigma2):
-    return one_gaussian_np(x, f1, mu1, sigma1) + one_gaussian_np(
-        x, f2, mu2, sigma2)
+def two_gaussians(x, f1, mu1, sigma1, f2, mu2, sigma2):
+    return one_gaussian(x, f1, mu1, sigma1) + one_gaussian(x, f2, mu2, sigma2)
 
 
 def fit_two_gaussians(x_hist, hist):
@@ -823,7 +732,7 @@ def fit_two_gaussians(x_hist, hist):
     max_hist = x_hist[-1]
     try:
         param_gauss, _ = optimize.curve_fit(
-            two_gaussians_np,
+            two_gaussians,
             x_hist,
             hist,
             bounds=([0.0, min_hist, 0.0, 0.0, min_hist, 0.0],
@@ -835,7 +744,5 @@ def fit_two_gaussians(x_hist, hist):
 
 
 def smooth_histogram(hist, kernel_size=7):
-    kernel = torch.ones(1, 1, kernel_size, device=hist.device) / kernel_size
-    hist = hist.view(1, 1, -1)
-    hist_smooth = F.conv1d(hist, kernel, padding=kernel_size // 2)
-    return hist_smooth.view(-1)
+    kernel = np.ones(kernel_size) / kernel_size
+    return np.convolve(hist, kernel, mode='same')

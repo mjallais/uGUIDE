@@ -124,6 +124,7 @@ def run_training(theta, x, config, plot_loss=True, load_state=False):
     lr_history = []
     epochs_no_change = 0
     epoch = 0
+    invalid_ratio_history = 0
 
     pbar = tqdm(desc='Training', total=config['max_epochs'])
     while epoch < config['max_epochs'] \
@@ -149,12 +150,32 @@ def run_training(theta, x, config, plot_loss=True, load_state=False):
                 lp_theta = cond_dist.log_prob(theta_batch)
 
             invalid_ratio = (~torch.isfinite(lp_theta)).float().mean()
-            if invalid_ratio > 0:
-                print(f"{invalid_ratio*100:.2f}% invalid log_probs")
-
-            lp_theta = lp_theta[torch.isfinite(lp_theta)]
-            if len(lp_theta) == 0:
+            if invalid_ratio > 0.1:
+                print(
+                    f"{invalid_ratio*100:.2f}% invalid log_probs. Skipping batch."
+                )
                 continue
+
+            if invalid_ratio > 0.2:
+                invalid_ratio_history += 1
+            else:
+                invalid_ratio_history = 0
+
+            if invalid_ratio_history > 5:
+                print(
+                    "Too many batches with high invalid log_probs, reducing learning rate."
+                )
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] *= 0.5
+                invalid_ratio_history = 0
+
+            # lp_theta = lp_theta[torch.isfinite(lp_theta)]
+            # if len(lp_theta) == 0:
+            #     continue
+            lp_theta = torch.nan_to_num(lp_theta,
+                                        nan=-1e6,
+                                        posinf=-1e6,
+                                        neginf=-1e6)
 
             loss = -lp_theta.mean()
 
@@ -186,9 +207,13 @@ def run_training(theta, x, config, plot_loss=True, load_state=False):
                 with pyro.validation_enabled(False):
                     lp_theta = cond_dist.log_prob(theta_batch)
 
-                lp_theta = lp_theta[torch.isfinite(lp_theta)]
-                if len(lp_theta) == 0:
-                    continue
+                # lp_theta = lp_theta[torch.isfinite(lp_theta)]
+                # if len(lp_theta) == 0:
+                #     continue
+                lp_theta = torch.nan_to_num(lp_theta,
+                                            nan=-1e6,
+                                            posinf=-1e6,
+                                            neginf=-1e6)
 
                 loss = -lp_theta.mean()
                 loss_acc.append(loss.item())
