@@ -206,13 +206,13 @@ def run_training(theta, x, config, plot_loss=True, load_state=False):
                 with pyro.validation_enabled(False):
                     lp_theta = cond_dist.log_prob(theta_batch)
 
-                # lp_theta = lp_theta[torch.isfinite(lp_theta)]
+                lp_theta = lp_theta[torch.isfinite(lp_theta)]
                 # if len(lp_theta) == 0:
                 #     continue
-                lp_theta = torch.nan_to_num(lp_theta,
-                                            nan=-1e6,
-                                            posinf=-1e6,
-                                            neginf=-1e6)
+                # lp_theta = torch.nan_to_num(lp_theta,
+                #                             nan=-1e6,
+                #                             posinf=-1e6,
+                #                             neginf=-1e6)
 
                 loss = -lp_theta.mean()
                 loss_acc.append(loss.item())
