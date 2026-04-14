@@ -150,32 +150,31 @@ def run_training(theta, x, config, plot_loss=True, load_state=False):
                 lp_theta = cond_dist.log_prob(theta_batch)
 
             invalid_ratio = (~torch.isfinite(lp_theta)).float().mean()
-            if invalid_ratio > 0.1:
+            if invalid_ratio > 0.2:
                 print(
                     f"{invalid_ratio*100:.2f}% invalid log_probs. Skipping batch."
                 )
-                continue
-
-            if invalid_ratio > 0.2:
                 invalid_ratio_history += 1
+
+                if invalid_ratio_history >= 5:
+                    print(
+                        "Too many batches with high invalid log_probs, reducing learning rate."
+                    )
+                    for param_group in optimizer.param_groups:
+                        param_group['lr'] *= 0.5
+                    invalid_ratio_history = 0
+
+                continue
             else:
                 invalid_ratio_history = 0
 
-            if invalid_ratio_history > 5:
-                print(
-                    "Too many batches with high invalid log_probs, reducing learning rate."
-                )
-                for param_group in optimizer.param_groups:
-                    param_group['lr'] *= 0.5
-                invalid_ratio_history = 0
-
-            # lp_theta = lp_theta[torch.isfinite(lp_theta)]
+            lp_theta = lp_theta[torch.isfinite(lp_theta)]
             # if len(lp_theta) == 0:
             #     continue
-            lp_theta = torch.nan_to_num(lp_theta,
-                                        nan=-1e6,
-                                        posinf=-1e6,
-                                        neginf=-1e6)
+            # lp_theta = torch.nan_to_num(lp_theta,
+            #                             nan=-1e6,
+            #                             posinf=-1e6,
+            #                             neginf=-1e6)
 
             loss = -lp_theta.mean()
 
@@ -275,6 +274,7 @@ def run_training(theta, x, config, plot_loss=True, load_state=False):
         ax1.legend(lines + lines2, labels + labels2)
 
         plt.title("LR vs Loss during training")
+        fig.tight_layout()
         fig.savefig(config['folderpath'] / 'loss_training.png')
 
     return best_val_loss
