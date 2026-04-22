@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 
+
 def build_embedder_MLP(input_dim, output_dim, layer_1_dim=128, layer_2_dim=64):
 
     embedder = nn.Sequential(
@@ -13,18 +14,27 @@ def build_embedder_MLP(input_dim, output_dim, layer_1_dim=128, layer_2_dim=64):
 
     return embedder
 
-def get_embedded_net(input_dim, output_dim, layer_1_dim=128, layer_2_dim=64,
-                     pretrained_state=None, use_MLP=True):
+
+def get_embedded_net(input_dim,
+                     output_dim,
+                     layer_1_dim=128,
+                     layer_2_dim=64,
+                     pretrained_state=None,
+                     use_MLP=True,
+                     device='cpu'):
 
     if use_MLP == False:
         embedded_net = nn.Identity()
     else:
-        embedded_net = build_embedder_MLP(input_dim=input_dim, output_dim=output_dim, 
-                                          layer_1_dim=layer_1_dim, layer_2_dim=layer_2_dim)
-    
+        embedded_net = build_embedder_MLP(input_dim=input_dim,
+                                          output_dim=output_dim,
+                                          layer_1_dim=layer_1_dim,
+                                          layer_2_dim=layer_2_dim)
+
         if pretrained_state is not None:
-            embedder_state_dict = torch.load(pretrained_state)
+            embedder_state_dict = torch.load(pretrained_state,
+                                             map_location=torch.device(device))
             embedded_net.load_state_dict(embedder_state_dict)
             embedded_net.eval()
-        
+
     return embedded_net

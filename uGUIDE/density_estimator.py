@@ -25,14 +25,19 @@ def build_nf(input_dim, nf_features=32, n_flows=5):
     return nf
 
 
-def get_nf(input_dim, nf_features, n_flows=5, pretrained_state=None):
+def get_nf(input_dim,
+           nf_features,
+           n_flows=5,
+           pretrained_state=None,
+           device='cpu'):
 
     nf = build_nf(input_dim=input_dim,
                   nf_features=nf_features,
                   n_flows=n_flows)
 
     if pretrained_state is not None:
-        nf_state_dict = torch.load(pretrained_state)
+        nf_state_dict = torch.load(pretrained_state,
+                                   map_location=torch.device(device))
         nf.load_state_dict(nf_state_dict)
         nf.eval()
 

@@ -126,12 +126,14 @@ def estimate_microstructure(
                                     layer_2_dim=config['hidden_layers'][1],
                                     pretrained_state=config['folderpath'] /
                                     config['embedder_state_dict_file'],
-                                    use_MLP=config['use_MLP']).to(device)
+                                    use_MLP=config['use_MLP'],
+                                    device=device).to(device)
     nf = get_nf(input_dim=config['size_theta'],
                 nf_features=config['nf_features'],
                 n_flows=config['n_flows'],
                 pretrained_state=config['folderpath'] /
-                config['nf_state_dict_file']).to(device)
+                config['nf_state_dict_file'],
+                device=device).to(device)
 
     embedded_net.eval()
     nf.eval()
