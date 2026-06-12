@@ -49,8 +49,6 @@ else:
                                   prior=prior,
                                   prior_postprocessing=None,
                                   nf_features=6,
-                                  nb_samples=50_000,
-                                  max_epochs=200,
                                   random_seed=1234)
     save_config_uGUIDE(config, savefile='config.pkl')
 
@@ -71,26 +69,8 @@ if args.inference:
 
 print('Estimation of the microstructure parameters from the test signals')
 nb_theta = theta_test.shape[0]
-start_time = time.time()
-# No postprocessing, because we do a comparison with ground truth values that contain u0 and u1
-estimates = Parallel(n_jobs=10)(
-    delayed(estimate_microstructure)(x_test[i, :], config, plot=False)
-    for i in np.arange(nb_theta))
-stop_time = time.time()
-print('Time to estimate parameters in all voxels:', stop_time - start_time)
-
-map = np.zeros((nb_theta, config['size_theta']))
-mask = np.zeros((nb_theta, config['size_theta']), dtype=bool)
-mask_degeneracy = np.zeros((nb_theta, config['size_theta']), dtype=bool)
-uncertainty = np.zeros((nb_theta, config['size_theta']))
-ambiguity = np.zeros((nb_theta, config['size_theta']))
-
-for i in np.arange(nb_theta):
-    map[i, :] = estimates[i][0]
-    mask[i, :] = estimates[i][1]
-    mask_degeneracy[i, :] = estimates[i][2]
-    uncertainty[i, :] = estimates[i][3]
-    ambiguity[i, :] = estimates[i][4]
+map_est, mask, mask_degeneracy, uncertainty, ambiguity = estimate_microstructure(
+    x_test[:nb_theta, :], config, verbose=True, plot=False)
 
 plt.figure(figsize=(5 * config['size_theta'], 5))
 col = np.where(mask_degeneracy == True, 'r', 'b')
@@ -102,9 +82,11 @@ for p, param in enumerate(config['prior'].keys()):
              alpha=0.5)
     idx_valid = np.where(mask[:, p] == True)
     plt.scatter(theta_test[idx_valid[0], p],
-                map[idx_valid[0], p],
+                map_est[idx_valid[0], p],
                 c=col[idx_valid[0], p])
     plt.xlabel(f'{param}')
     plt.xlim(config['prior'][param][0], config['prior'][param][1])
     plt.ylim(config['prior'][param][0], config['prior'][param][1])
 plt.savefig(config['folderpath'] / 'plot_ground_truth_map.png')
+print('Plot saved in ' +
+      str(config['folderpath'] / 'plot_ground_truth_map.png'))

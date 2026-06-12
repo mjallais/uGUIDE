@@ -40,9 +40,7 @@ config = create_config_uGUIDE(microstructure_model_name='Standard_Model',
                               prior_postprocessing=prior_postprocessing,
                               use_MLP=True,
                               nf_features=6,
-                              max_epochs=200,
-                              n_epochs_no_change=10,
-                              nb_samples=50_000,
+                              max_epochs=1000,
                               random_seed=1234)
 save_config_uGUIDE(config, savefile='config_postprocessing.pkl')
 print(f'Device used for computations: {config["device"]}')
@@ -63,17 +61,17 @@ theta_test, x_test = preprocess_data(theta_test, x_test, bvals, normalize=True)
 
 #%%
 # Without postprocessing
-_ = estimate_microstructure(x_test[1, :],
+_ = estimate_microstructure(x_test[:5, :],
                             config,
+                            verbose=True,
                             plot=True,
-                            theta_gt=theta_test[1, :])
+                            theta_gt=theta_test[:5, :])
 
 # %%
 # With postprocessing
 # Convert u0 and u1 to De_par and De_perp and plot results
-_ = estimate_microstructure(x_test[1, :],
+_ = estimate_microstructure(x_test[:5, :],
                             config,
                             postprocessing=postprocess_SM,
+                            verbose=True,
                             plot=True)
-
-# %%
