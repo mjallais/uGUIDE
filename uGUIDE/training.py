@@ -74,13 +74,13 @@ def run_training(theta, x, config, plot_loss=True, load_state=False):
                                   shuffle=True,
                                   num_workers=num_workers,
                                   pin_memory=True,
-                                  persistent_workers=True)
+                                  persistent_workers=num_workers > 0)
     val_dataloader = DataLoader(val_dataset,
                                 batch_size=4_096,
                                 shuffle=False,
                                 num_workers=num_workers,
                                 pin_memory=True,
-                                persistent_workers=True)
+                                persistent_workers=num_workers > 0)
 
     # Models
     nf = get_nf(input_dim=config['size_theta'],
