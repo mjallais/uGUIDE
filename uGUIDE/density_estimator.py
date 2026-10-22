@@ -1,6 +1,58 @@
 import torch
 from torch import nn
 import pyro.distributions.transforms as T
+from pyro.distributions.conditional import ConditionalTransformModule
+
+
+class ConstantConditionalTransformModule(ConditionalTransformModule):
+    """
+    Wrap an ordinary transform (e.g. Permute or Sigmoid) so that
+    it can participate in a ConditionalTransformedDistribution.
+
+    The transform itself does not depend on the context.
+    """
+
+    def __init__(self, transform):
+        super().__init__()
+        self.transform = transform
+
+    def condition(self, context):
+        return self.transform
+
+    def clear_cache(self):
+        self.transform.clear_cache()
+
+
+class ConditionalNF(nn.Module):
+    """
+    Container for the conditional normalizing-flow transforms.
+
+    It is an nn.Module, so:
+        nf.to(device)
+        nf.parameters()
+
+    both work.
+
+    It is also iterable, so:
+        ConditionalTransformedDistribution(base_dist, nf)
+
+    works with Pyro.
+    """
+
+    def __init__(self, transforms):
+        super().__init__()
+
+        # Register all transforms as PyTorch submodules.
+        self.transforms = nn.ModuleList(transforms)
+
+    def __iter__(self):
+        return iter(self.transforms)
+
+    def __len__(self):
+        return len(self.transforms)
+
+    def __getitem__(self, index):
+        return self.transforms[index]
 
 
 def build_nf(input_dim, nf_features=32, n_flows=5):
@@ -17,10 +69,20 @@ def build_nf(input_dim, nf_features=32, n_flows=5):
             stable=True,
         )
         transforms.append(transform)
-        transforms.append(T.Permute(torch.randperm(input_dim)))
+        # transforms.append(T.Permute(torch.randperm(input_dim)))
+        # Deterministic permutation
+        if input_dim == 2:
+            permutation = torch.tensor([1, 0])
+        else:
+            permutation = torch.arange(input_dim - 1, -1, -1)
 
-    transforms.append(T.SigmoidTransform())
-    nf = T.ComposeTransformModule(parts=transforms)
+        transforms.append(
+            ConstantConditionalTransformModule(T.Permute(permutation)))
+
+    # Bound every output to (0, 1).
+    transforms.append(ConstantConditionalTransformModule(T.SigmoidTransform()))
+
+    nf = ConditionalNF(transforms=transforms)
 
     return nf
 
