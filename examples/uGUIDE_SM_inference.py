@@ -20,7 +20,6 @@ theta_train, x_train = preprocess_data(theta_train,
                                        normalize=True)
 
 #%%
-eps = 1e-3
 prior = {
     'f': [0.0, 1.0],
     'Da': [0.1, 3.0],
@@ -35,16 +34,6 @@ prior_postprocessing = {
     'De_par': [0.1, 3.0],
     'De_perp': [0.1, 3.0]
 }
-theta_train[:, 0] = np.clip(theta_train[:, 0], prior['f'][0] + eps,
-                            prior['f'][1] - eps)
-theta_train[:, 1] = np.clip(theta_train[:, 1], prior['Da'][0] + eps,
-                            prior['Da'][1] - eps)
-theta_train[:, 2] = np.clip(theta_train[:, 2], prior['ODI'][0] + eps,
-                            prior['ODI'][1] - eps)
-theta_train[:, 3] = np.clip(theta_train[:, 3], prior['u0'][0] + eps,
-                            prior['u0'][1] - eps)
-theta_train[:, 4] = np.clip(theta_train[:, 4], prior['u1'][0] + eps,
-                            prior['u1'][1] - eps)
 
 #%%
 config = create_config_uGUIDE(microstructure_model_name='Standard_Model',

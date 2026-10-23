@@ -100,10 +100,10 @@ def run_training(theta, x, config, plot_loss=True, load_state=False):
     nf.to(device)
     embedded_net.to(device)
 
-    # base_dist = dist.Normal(loc=torch.zeros(config['size_theta']).to(device),
-    #                         scale=torch.ones(
-    #                             config['size_theta']).to(device)).to_event(1)
-    # transformed_dist = dist.ConditionalTransformedDistribution(base_dist, nf)
+    base_dist = dist.Normal(loc=torch.zeros(config['size_theta']).to(device),
+                            scale=torch.ones(
+                                config['size_theta']).to(device)).to_event(1)
+    transformed_dist = dist.ConditionalTransformedDistribution(base_dist, nf)
 
     modules = torch.nn.ModuleList([nf, embedded_net])
     optimizer = torch.optim.Adam(modules.parameters(),
@@ -140,25 +140,7 @@ def run_training(theta, x, config, plot_loss=True, load_state=False):
             optimizer.zero_grad()
 
             embedding = embedded_net(x_batch)
-            # embedding = torch.tanh(
-            #     embedding)  # Ensure embedding is bounded between -1 and 1
-            # embedding = F.layer_norm(embedding, embedding.shape[-1:])
-
-            # Build fresh base distribution matching the batch size B
-            B = theta_batch.shape[0]
-            base_dist = dist.Normal(
-                torch.zeros((B, config['size_theta']), device=device),
-                torch.ones((B, config['size_theta']),
-                           device=device)).to_event(1)
-
-            # Directly condition FlowModule to get composite transform
-            composed_transform = nf.condition(embedding)
-
-            # Form TransformedDistribution for this batch
-            cond_dist = dist.TransformedDistribution(base_dist,
-                                                     composed_transform)
-
-            # cond_dist = transformed_dist.condition(embedding)
+            cond_dist = transformed_dist.condition(embedding)
 
             with pyro.validation_enabled(False):
                 lp_theta = cond_dist.log_prob(theta_batch)
@@ -197,16 +179,7 @@ def run_training(theta, x, config, plot_loss=True, load_state=False):
                 continue
 
             loss.backward()
-            total_grad_norm = torch.nn.utils.clip_grad_norm_(
-                modules.parameters(), max_norm=1.0)
-
-            if epoch == 0:
-                embedder_has_grad = any(
-                    p.grad is not None and p.grad.abs().sum() > 0
-                    for p in embedded_net.parameters())
-                print(
-                    f"Epoch 0 - Loss: {loss.item():.4f} | Total Grad Norm: {total_grad_norm.item():.4f} | Embedder updated: {embedder_has_grad}"
-                )
+            torch.nn.utils.clip_grad_norm_(modules.parameters(), max_norm=1.0)
 
             optimizer.step()
 
@@ -221,23 +194,7 @@ def run_training(theta, x, config, plot_loss=True, load_state=False):
                 x_batch = x_batch.to(device, non_blocking=True)
 
                 embedding = embedded_net(x_batch)
-                # embedding = torch.tanh(embedding)
-                # embedding = F.layer_norm(embedding, embedding.shape[-1:])
-
-                B = theta_batch.shape[0]
-                base_dist = dist.Normal(
-                    torch.zeros((B, config['size_theta']), device=device),
-                    torch.ones((B, config['size_theta']),
-                               device=device)).to_event(1)
-
-                # Directly condition FlowModule to get composite transform
-                composed_transform = nf.condition(embedding)
-
-                # Form TransformedDistribution for this batch
-                cond_dist = dist.TransformedDistribution(
-                    base_dist, composed_transform)
-
-                # cond_dist = transformed_dist.condition(embedding)
+                cond_dist = transformed_dist.condition(embedding)
 
                 with pyro.validation_enabled(False):
                     lp_theta = cond_dist.log_prob(theta_batch)

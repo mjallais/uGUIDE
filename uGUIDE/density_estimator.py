@@ -12,28 +12,31 @@ class FlowModule(nn.Module, ConditionalTransform):
         super().__init__()
         self.ar_modules = nn.ModuleList(ar_modules)
         self.cond_transforms = cond_transforms
+        self._permutation_buffers = {}
+        for index, transform in enumerate(cond_transforms):
+            if isinstance(transform, ConstantConditionalTransform):
+                transform = transform.transform
+            if isinstance(transform, T.Permute):
+                name = f"flow_permutation_{index}"
+                self.register_buffer(name, transform.permutation.clone())
+                self._permutation_buffers[index] = name
 
     def condition(self, context):
         """Pass context to conditional transforms, return composite transform."""
         conditioned = [
             t.condition(context) if isinstance(t, ConditionalTransform) else t
-            for t in self.cond_transforms
+            for t in self
         ]
         return T.ComposeTransform(conditioned)
 
-    def _apply(self, fn):
-        super()._apply(fn)
-        for ct in self.cond_transforms:
-            t = getattr(ct, "transform", getattr(ct, "cache", ct))
-            for attr in ["permutation", "inv_permutation"]:
-                if hasattr(t, attr):
-                    tensor = getattr(t, attr)
-                    if isinstance(tensor, torch.Tensor):
-                        setattr(t, attr, fn(tensor))
-        return self
-
     def __iter__(self):
-        return iter(self.cond_transforms)
+        for index, transform in enumerate(self.cond_transforms):
+            if index in self._permutation_buffers:
+                # Rebuild from the saved buffer so loading and device moves also
+                # update the transform, including its cached inverse permutation.
+                transform = ConstantConditionalTransform(
+                    T.Permute(getattr(self, self._permutation_buffers[index])))
+            yield transform
 
     def __len__(self):
         return len(self.cond_transforms)
@@ -51,8 +54,9 @@ def build_nf(input_dim, nf_features=32, n_flows=5):
             hidden_dims=[32, 32],
             log_scale_min_clip=-5.0,
             log_scale_max_clip=2.0,
-            sigmoid_bias=2.0,
-            stable=True,
+            # Allow expansion as well as contraction in logit space. The stable
+            # variant can saturate at scale=1 and suppress its conditional mean.
+            stable=False,
         )
         ar_modules.append(ar)
         cond_transforms.append(ar)
@@ -68,43 +72,6 @@ def build_nf(input_dim, nf_features=32, n_flows=5):
     return FlowModule(cond_transforms, ar_modules)
 
 
-# def build_nf(input_dim, nf_features=32, n_flows=5):
-
-#     transforms = []
-#     for _ in range(n_flows):
-#         # 1. Conditional Affine Autoregressive Transform
-#         transform = T.conditional_affine_autoregressive(
-#             input_dim=input_dim,
-#             context_dim=nf_features,
-#             hidden_dims=[32, 32],
-#             log_scale_min_clip=-3.0,
-#             log_scale_max_clip=0.05,
-#             sigmoid_bias=2.0,
-#             stable=True,
-#         )
-#         transforms.append(transform)
-
-#         # 2. Fixed permutation transform
-#         transforms.append(T.TransformModule(T.permute(input_dim=input_dim)))
-#         # transforms.append(T.Permute(torch.randperm(input_dim)))
-#         # # Deterministic permutation
-#         # permutation = torch.roll(
-#         #     torch.arange(input_dim),
-#         #     shifts=t + 1,
-#         # )
-#         # transforms.append(ConditionalPermute(permutation))
-
-#     # 3. Final Sigmoid transform to map output to (0, 1)
-#     # transforms.append(T.SigmoidTransform())
-#     transforms.append(T.TransformModule(T.SigmoidTransform()))
-
-#     # Compose module registers parameters for Pyro/torch.nn
-#     nf = T.ComposeTransformModule(transforms)
-#     # nf = ConditionalComposeTransformModule(transforms)
-
-#     return nf
-
-
 def get_nf(input_dim,
            nf_features,
            n_flows=5,
@@ -118,6 +85,13 @@ def get_nf(input_dim,
     if pretrained_state is not None:
         nf_state_dict = torch.load(pretrained_state,
                                    map_location=torch.device(device))
+        if any(name not in nf_state_dict
+               for name in nf._permutation_buffers.values()):
+            raise ValueError(
+                "This flow checkpoint is missing the inter-layer permutations. "
+                "Retrain with load_state=False to save a complete flow; the "
+                "original permutations cannot be recovered from this checkpoint."
+            )
         nf.load_state_dict(nf_state_dict)
         nf.eval()
 
