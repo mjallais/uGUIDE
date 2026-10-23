@@ -35,7 +35,6 @@ prior_postprocessing = {
     'De_perp': [0.1, 3.0]
 }
 
-#%%
 config = create_config_uGUIDE(microstructure_model_name='Standard_Model',
                               size_x=x_train.shape[1],
                               prior=prior,
@@ -79,60 +78,3 @@ _ = estimate_microstructure(x_test[:5, :],
                             postprocessing=postprocess_SM,
                             verbose=True,
                             plot=True)
-
-# %%
-# import torch
-# import pyro.distributions as dist
-# from uGUIDE.embedded_net import get_embedded_net
-# from uGUIDE.density_estimator import get_nf
-
-# # Take two noticeably different test MRI signals
-# x1 = torch.Tensor(x_test[0:1, :]).to(config['device'])
-# x2 = torch.Tensor(x_test[12:13, :]).to(config['device'])
-
-# load_state = True
-# device = config['device']
-
-# embedded_net = get_embedded_net(
-#         input_dim=config['size_x'],
-#         output_dim=config['nf_features'],
-#         layer_1_dim=config['hidden_layers'][0],
-#         layer_2_dim=config['hidden_layers'][1],
-#         pretrained_state=config['folderpath'] /
-#         config['embedder_state_dict_file'] if load_state else None,
-#         use_MLP=config['use_MLP'], device=config['device']).to(config['device'])
-# nf = get_nf(input_dim=config['size_theta'],
-#                 nf_features=config['nf_features'],
-#                 n_flows=config['n_flows'],
-#                 pretrained_state=config['folderpath'] /
-#                 config['nf_state_dict_file'],
-#                 device='cuda').to('cuda')
-# embedded_net.eval()
-# nf.eval()
-# B = x1.shape[0]  # Actual batch size (last batch might be smaller)
-# D = config['size_theta']
-
-# with torch.no_grad():
-#     emb1 = embedded_net(x1.to(config['device']))
-#     emb2 = embedded_net(x2.to(config['device']))
-
-#     # Print embedding outputs — they MUST be different!
-#     print("Embedding 1:", emb1)
-#     print("Embedding 2:", emb2)
-#     print("Difference norm:", torch.norm(emb1 - emb2).item())
-
-#     base_dist = dist.Normal(
-#                 torch.zeros((B, D), device=device),
-#                 torch.ones((B, D), device=device),
-#             ).to_event(1)
-#     transformed_dist = dist.ConditionalTransformedDistribution(
-#                     base_dist, nf)
-#     # Sample conditional distribution
-#     dist1 = transformed_dist.condition(emb1)
-#     dist2 = transformed_dist.condition(emb2)
-
-#     s1 = dist1.sample((1000,))
-#     s2 = dist2.sample((1000,))
-
-#     print("Sample 1 Mean:", s1.mean(dim=0))
-#     print("Sample 2 Mean:", s2.mean(dim=0))
