@@ -10,17 +10,38 @@ class ConstantConditionalTransformModule(ConditionalTransformModule):
     it can participate in a ConditionalTransformedDistribution.
 
     The transform itself does not depend on the context.
+
+    For Permute transforms, the permutation tensor is explicitly
+    moved to the same device as the conditioning context.
     """
 
     def __init__(self, transform):
         super().__init__()
-        self.transform = transform
+
+        self.transform_type = type(transform).__name__
+
+        if isinstance(transform, T.Permute):
+            self.permutation = transform.permutation.clone().detach()
+            self.dim = transform.dim
+
+        else:
+            self.transform = transform
 
     def condition(self, context):
+
+        if self.transform_type == "Permute":
+            permutation = self.permutation.to(context.device)
+
+            return T.Permute(
+                permutation=permutation,
+                dim=self.dim,
+            )
+
         return self.transform
 
     def clear_cache(self):
-        self.transform.clear_cache()
+        if hasattr(self, "transform"):
+            self.transform.clear_cache()
 
 
 class ConditionalNF(nn.Module):
