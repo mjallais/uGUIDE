@@ -163,21 +163,29 @@ def estimate_microstructure(
             x_norm = x_normalizer(x_batch)
 
             embedding = embedded_net(x_norm)
-            embedding = torch.tanh(embedding)
-            embedding = F.layer_norm(embedding, embedding.shape[-1:])
+            print(f"Embedding: {embedding}")
+            # embedding = torch.tanh(embedding)
+            # embedding = F.layer_norm(embedding, embedding.shape[-1:])
 
             # Sample posterior: one shot sampling from the normalizing flow in the normalized space
             base_dist = dist.Normal(
                 torch.zeros((B, D), device=device),
                 torch.ones((B, D), device=device),
             ).to_event(1)
-            transformed_dist = dist.ConditionalTransformedDistribution(
-                base_dist, nf)
-            cond_dist = transformed_dist.condition(embedding)
+            # transformed_dist = dist.ConditionalTransformedDistribution(
+            #     base_dist, nf)
+            # cond_dist = transformed_dist.condition(embedding)
+            composed_transform = nf.condition(embedding)
+            cond_dist = dist.TransformedDistribution(base_dist,
+                                                     composed_transform)
 
             theta_norm_samples = cond_dist.sample((S, ))  # (S, B, D)
             theta_norm_samples = theta_norm_samples.permute(1, 0,
                                                             2)  # (B, S, D)
+
+            print(f"theta_norm_samples shape: {theta_norm_samples.shape}")
+            print(f"theta_norm_samples min: {theta_norm_samples.min(1)[0]}")
+            print(f"theta_norm_samples max: {theta_norm_samples.max(1)[0]}")
 
             # Inverse normalization
             theta_samples = theta_normalizer.inverse(
@@ -260,17 +268,20 @@ def estimate_microstructure(
             x_norm = x_normalizer(x_idx)
 
             embedding = embedded_net(x_norm)
-            embedding = torch.tanh(embedding)
-            embedding = F.layer_norm(embedding, embedding.shape[-1:])
+            # embedding = torch.tanh(embedding)
+            # embedding = F.layer_norm(embedding, embedding.shape[-1:])
 
             # Sample posterior: one shot sampling from the normalizing flow in the normalized space
             base_dist = dist.Normal(
                 torch.zeros((B, D), device=device),
                 torch.ones((B, D), device=device),
             ).to_event(1)
-            transformed_dist = dist.ConditionalTransformedDistribution(
-                base_dist, nf)
-            cond_dist = transformed_dist.condition(embedding)
+            # transformed_dist = dist.ConditionalTransformedDistribution(
+            #     base_dist, nf)
+            # cond_dist = transformed_dist.condition(embedding)
+            composed_transform = nf.condition(embedding)
+            cond_dist = dist.TransformedDistribution(base_dist,
+                                                     composed_transform)
 
             theta_norm_samples = cond_dist.sample((S, ))  # (S, B, D)
             theta_norm_samples = theta_norm_samples.permute(1, 0,

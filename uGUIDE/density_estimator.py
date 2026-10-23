@@ -1,111 +1,108 @@
 import torch
 from torch import nn
+import pyro.distributions as dist
 import pyro.distributions.transforms as T
-from pyro.distributions.conditional import ConditionalTransformModule
+from pyro.distributions.conditional import ConstantConditionalTransform, ConditionalTransform
 
 
-class ConstantConditionalTransformModule(ConditionalTransformModule):
-    """
-    Wrap an ordinary transform (e.g. Permute or Sigmoid) so that
-    it can participate in a ConditionalTransformedDistribution.
+class FlowModule(nn.Module, ConditionalTransform):
+    """Wraps Pyro transforms while registering parameters and forwarding context."""
 
-    The transform itself does not depend on the context.
-
-    For Permute transforms, the permutation tensor is explicitly
-    moved to the same device as the conditioning context.
-    """
-
-    def __init__(self, transform):
+    def __init__(self, cond_transforms, ar_modules):
         super().__init__()
-
-        self.transform_type = type(transform).__name__
-
-        if isinstance(transform, T.Permute):
-            self.permutation = transform.permutation.clone().detach()
-            self.dim = transform.dim
-
-        else:
-            self.transform = transform
+        self.ar_modules = nn.ModuleList(ar_modules)
+        self.cond_transforms = cond_transforms
 
     def condition(self, context):
+        """Pass context to conditional transforms, return composite transform."""
+        conditioned = [
+            t.condition(context) if isinstance(t, ConditionalTransform) else t
+            for t in self.cond_transforms
+        ]
+        return T.ComposeTransform(conditioned)
 
-        if self.transform_type == "Permute":
-            permutation = self.permutation.to(context.device)
-
-            return T.Permute(
-                permutation=permutation,
-                dim=self.dim,
-            )
-
-        return self.transform
-
-    def clear_cache(self):
-        if hasattr(self, "transform"):
-            self.transform.clear_cache()
-
-
-class ConditionalNF(nn.Module):
-    """
-    Container for the conditional normalizing-flow transforms.
-
-    It is an nn.Module, so:
-        nf.to(device)
-        nf.parameters()
-
-    both work.
-
-    It is also iterable, so:
-        ConditionalTransformedDistribution(base_dist, nf)
-
-    works with Pyro.
-    """
-
-    def __init__(self, transforms):
-        super().__init__()
-
-        # Register all transforms as PyTorch submodules.
-        self.transforms = nn.ModuleList(transforms)
+    def _apply(self, fn):
+        super()._apply(fn)
+        for ct in self.cond_transforms:
+            t = getattr(ct, "transform", getattr(ct, "cache", ct))
+            for attr in ["permutation", "inv_permutation"]:
+                if hasattr(t, attr):
+                    tensor = getattr(t, attr)
+                    if isinstance(tensor, torch.Tensor):
+                        setattr(t, attr, fn(tensor))
+        return self
 
     def __iter__(self):
-        return iter(self.transforms)
+        return iter(self.cond_transforms)
 
     def __len__(self):
-        return len(self.transforms)
-
-    def __getitem__(self, index):
-        return self.transforms[index]
+        return len(self.cond_transforms)
 
 
 def build_nf(input_dim, nf_features=32, n_flows=5):
+    cond_transforms = []
+    ar_modules = []
 
-    transforms = []
-    for t in range(n_flows):
-        transform = T.conditional_affine_autoregressive(
+    for _ in range(n_flows):
+        # 1. Conditional Autoregressive Layer
+        ar = T.conditional_affine_autoregressive(
             input_dim=input_dim,
             context_dim=nf_features,
             hidden_dims=[32, 32],
-            log_scale_min_clip=-3.0,
-            log_scale_max_clip=0.05,
+            log_scale_min_clip=-5.0,
+            log_scale_max_clip=2.0,
             sigmoid_bias=2.0,
             stable=True,
         )
-        transforms.append(transform)
-        # transforms.append(T.Permute(torch.randperm(input_dim)))
-        # Deterministic permutation
-        if input_dim == 2:
-            permutation = torch.tensor([1, 0])
-        else:
-            permutation = torch.arange(input_dim - 1, -1, -1)
+        ar_modules.append(ar)
+        cond_transforms.append(ar)
 
-        transforms.append(
-            ConstantConditionalTransformModule(T.Permute(permutation)))
+        # 2. Static Permute wrapped as ConstantConditionalTransform
+        perm = T.Permute(torch.randperm(input_dim))
+        cond_transforms.append(ConstantConditionalTransform(perm))
 
-    # Bound every output to (0, 1).
-    transforms.append(ConstantConditionalTransformModule(T.SigmoidTransform()))
+    # 3. Static Sigmoid wrapped as ConstantConditionalTransform
+    sig = T.SigmoidTransform()
+    cond_transforms.append(ConstantConditionalTransform(sig))
 
-    nf = ConditionalNF(transforms=transforms)
+    return FlowModule(cond_transforms, ar_modules)
 
-    return nf
+
+# def build_nf(input_dim, nf_features=32, n_flows=5):
+
+#     transforms = []
+#     for _ in range(n_flows):
+#         # 1. Conditional Affine Autoregressive Transform
+#         transform = T.conditional_affine_autoregressive(
+#             input_dim=input_dim,
+#             context_dim=nf_features,
+#             hidden_dims=[32, 32],
+#             log_scale_min_clip=-3.0,
+#             log_scale_max_clip=0.05,
+#             sigmoid_bias=2.0,
+#             stable=True,
+#         )
+#         transforms.append(transform)
+
+#         # 2. Fixed permutation transform
+#         transforms.append(T.TransformModule(T.permute(input_dim=input_dim)))
+#         # transforms.append(T.Permute(torch.randperm(input_dim)))
+#         # # Deterministic permutation
+#         # permutation = torch.roll(
+#         #     torch.arange(input_dim),
+#         #     shifts=t + 1,
+#         # )
+#         # transforms.append(ConditionalPermute(permutation))
+
+#     # 3. Final Sigmoid transform to map output to (0, 1)
+#     # transforms.append(T.SigmoidTransform())
+#     transforms.append(T.TransformModule(T.SigmoidTransform()))
+
+#     # Compose module registers parameters for Pyro/torch.nn
+#     nf = T.ComposeTransformModule(transforms)
+#     # nf = ConditionalComposeTransformModule(transforms)
+
+#     return nf
 
 
 def get_nf(input_dim,

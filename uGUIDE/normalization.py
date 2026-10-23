@@ -5,7 +5,7 @@ import torch
 
 class BoundedNormalizer:
 
-    def __init__(self, prior_min, prior_max, eps: float = 1e-6) -> None:
+    def __init__(self, prior_min, prior_max, eps: float = 1e-3) -> None:
 
         self.prior_min = torch.as_tensor(prior_min, dtype=torch.float32)
         self.prior_max = torch.as_tensor(prior_max, dtype=torch.float32)
@@ -79,7 +79,7 @@ def load_bounded_normalizer(path: str) -> BoundedNormalizer:
     return BoundedNormalizer(
         prior_min=data["prior_min"],
         prior_max=data["prior_max"],
-        eps=data.get("eps", 1e-6),
+        eps=data.get("eps", 1e-3),
     )
 
 
